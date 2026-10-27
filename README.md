@@ -40,20 +40,33 @@ here is AI-curated.
 ### Dashboard (start here)
 
 ```bash
-python main.py web --port 8899 --limit 50
+python main.py web --port 8899
 ```
 
 Opens a localhost dashboard at `http://127.0.0.1:8899` — a table of
 cash-secured-put candidates (checklist columns + the put nearest-or-above
--0.20 delta), **sorted by RoR% (30-day-normalized) by default**, click any
-column header to re-sort. The initial scan (`--limit`) runs automatically
-on startup; the page also has its own dropdown (25 / 50 / 100 / full S&P
-500) to kick off a fresh scan without restarting the server. A full-index
-scan is slow (~10-15 min) — it happens in a background thread so the page
-keeps responding and polls its own progress; you don't need to wait or
-refresh manually. This is CSP-only for now, as asked — other strategies
-(covered calls, LEAPS, etc.) are still only in the `screen`/`suggest` CLI
-commands below and will get their own dashboard views later.
+-0.20 delta), **sorted by RoR% by default** (premium ÷ net capital at risk
+over the contract's actual DTE — the same convention thinkorswim uses),
+click any column header to re-sort. Scans run in a background thread, so
+the page keeps responding, shows progress, and has a Cancel button.
+
+- **Universes** — S&P 500, Russell 2000/3000, or a saved "generated
+  universe" (a pre-filtered snapshot made with *Create New Universe*, so you
+  don't re-screen ~2,600 symbols every time). Your last scan config is
+  restored on restart.
+- **Modes** — General, or Options Trading (adds a realized-vol floor; an
+  optional Strict checkbox adds hard fundamentals gates).
+- **Options are fetched on demand** (per row, or "Fetch options for all
+  shown", which resumes where it stopped), never during the scan itself.
+- **Hide toggles** — far contracts (>45 DTE or >0.30 delta), RoR < 2.5%,
+  unknown/"-" rows, and more. Optional columns include Short % Float.
+- **Paste your own list** and either add it to the current list
+  (temporary) or replace it with a normal scan.
+
+Every scan only keeps stocks above a rising 30-week moving average
+(Weinstein Stage 2). Data is Yahoo Finance via `yfinance`: free, but options
+chains for small/illiquid names are sometimes incomplete, and short
+interest is always 1-2 weeks stale — cross-check before trading.
 
 ### CLI
 

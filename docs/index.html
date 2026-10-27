@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contagious Wealth Bot</title>
+<meta name="description" content="A local, suggest-only dashboard that screens stocks for cash-secured-put income. It never places a trade.">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1d23; --muted: #5b6472; --card: #f4f6fa; --line: #dfe3ea;
+    --accent: #2563eb; --warn-bg: #fff6e0; --warn-line: #e6c36a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --fg: #e8eaee; --muted: #9aa3b2; --card: #1b2028; --line: #2c333f;
+      --accent: #7ab0ff; --warn-bg: #2a2414; --warn-line: #7a6320;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 20px 80px; }
+  h1 { font-size: 2rem; margin: 0 0 8px; line-height: 1.2; }
+  h2 { font-size: 1.2rem; margin: 40px 0 12px; }
+  p { margin: 0 0 14px; }
+  .lede { color: var(--muted); font-size: 1.1rem; }
+  a { color: var(--accent); }
+  .btn { display: inline-block; margin: 8px 8px 0 0; padding: 9px 16px; border-radius: 8px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; font-size: 0.95rem; }
+  @media (prefers-color-scheme: dark) { .btn { color: #0b1220; } }
+  .btn.alt { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  ul { padding-left: 20px; margin: 0 0 14px; }
+  li { margin-bottom: 6px; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; font-size: 0.88rem; line-height: 1.5; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card b { display: block; margin-bottom: 4px; }
+  .card span { color: var(--muted); font-size: 0.92rem; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; padding: 14px 16px; }
+  footer { margin-top: 48px; color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Contagious Wealth Bot</h1>
+  <p class="lede">A local dashboard that screens stocks for cash-secured-put income and ranks them by return on risk. Suggest-only: it never places a trade.</p>
+  <a class="btn" href="https://github.com/Areax/contagious-wealth-bot">View on GitHub</a>
+  <a class="btn alt" href="https://github.com/Areax/contagious-wealth-bot#setup">Setup</a>
+
+  <h2>What it does</h2>
+  <p>Selling a cash-secured put means getting paid to agree to buy a stock at a lower price. This tool finds stocks worth doing that on, then finds the specific put contract to sell and shows what it pays relative to the cash you would tie up.</p>
+  <div class="grid">
+    <div class="card"><b>1. Trend gate</b><span>Only stocks above a rising 30-week moving average (Weinstein Stage 2) survive.</span></div>
+    <div class="card"><b>2. Quality checks</b><span>P/E, free cash flow, EPS beat, debt-to-equity, ROE and revenue growth shown as a checklist.</span></div>
+    <div class="card"><b>3. Volatility floor</b><span>Options Trading mode drops stocks too calm to pay rich premium.</span></div>
+    <div class="card"><b>4. The put</b><span>The contract nearest -0.20 delta (kept within 0.20 to 0.30), ranked by RoR%.</span></div>
+  </div>
+  <p>RoR% is premium divided by net capital at risk (strike &times; 100 minus premium), over the contract's actual days to expiration. That is the same convention thinkorswim uses.</p>
+
+  <h2>Features</h2>
+  <ul>
+    <li>Universes: S&amp;P 500, Russell 2000 and 3000, or a saved snapshot you generate once and reuse instead of re-screening about 2,600 symbols.</li>
+    <li>Options chains are fetched on demand, per row or for everything shown. A fetch resumes where it stopped and can be cancelled.</li>
+    <li>Hide toggles for far-out contracts, low RoR and rows with no data, plus optional columns such as Short % Float.</li>
+    <li>Paste your own tickers and add them to the current list, or replace it.</li>
+    <li>Your last scan setup is restored when you restart.</li>
+  </ul>
+
+  <h2>Run it</h2>
+  <p>It runs on your machine. Market data comes from Yahoo Finance through <code>yfinance</code>, so no API keys or broker account are needed.</p>
+<pre><code>git clone https://github.com/Areax/contagious-wealth-bot.git
+cd contagious-wealth-bot
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+python main.py web --port 8899</code></pre>
+  <p>Then open <code>http://127.0.0.1:8899</code>. This page is static; the dashboard itself needs live data and a Python server, so it can't be hosted here.</p>
+
+  <h2>Limits worth knowing</h2>
+  <ul>
+    <li>Yahoo's free options data is sometimes thin for small or illiquid stocks, so some rows show "-" even when a broker shows a full chain.</li>
+    <li>Short interest is reported twice a month and is always 1 to 2 weeks old. It does not include borrow cost or utilization.</li>
+    <li>Quotes can be delayed. Check the contract in your broker before acting.</li>
+  </ul>
+
+  <div class="warn">
+    <b>Not financial advice.</b> This is a screening tool for education and research. It does not know your finances, risk tolerance or tax situation, and options can lose more than the premium collected. You make and place every trade yourself.
+  </div>
+
+  <footer>Built from the "Contagious Wealth" guidebook's rules plus extra filters of my own. Not affiliated with the guidebook's author.</footer>
+</main>
+</body>
+</html>
