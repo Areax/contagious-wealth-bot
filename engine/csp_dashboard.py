@@ -107,6 +107,7 @@ class CspRow:
     symbol: str
     sector: str | None
     spot: float
+    name: str | None = None
     checks: dict = field(default_factory=dict)   # key -> {value: bool|None, reason: str}
     checks_passed: int = 0
     checks_evaluated: int = 0
@@ -126,12 +127,16 @@ class CspRow:
     # remove a row when scan_universe(require_curated_fundamentals=True).
     curated_gate_passed: bool | None = None
     curated_gate_reasons: list = field(default_factory=list)
+    # True for symbols the user typed in themselves: they bypass the uptrend,
+    # volatility and Strict fundamentals filters (see scan_universe's
+    # force_include) so a personal pick is always shown, never dropped.
+    forced: bool = False
 
 
-_RATE_LIMIT_SKIP_MESSAGE = "skipped — Yahoo Finance rate-limited this scan; see console/status for detail"
+_RATE_LIMIT_SKIP_MESSAGE = "Yahoo Finance is limiting requests right now. Wait a few minutes and try again."
 
 
-def _find_and_filter_put(symbol: str, spot: float, tech) -> SelectedOption | None:
+def _find_and_filter_put(symbol: str, spot: float, tech, stats: dict | None = None) -> SelectedOption | None:
     """Shared by the on-demand single-symbol fetch and (if ever needed)
     batch code: the actual options-chain search + the same delta-band
     filter used everywhere else in the dashboard. Can raise
@@ -153,6 +158,7 @@ def _find_and_filter_put(symbol: str, spot: float, tech) -> SelectedOption | Non
         ror_reference_dte=rules.WATCHLIST_RETURN_ON_RISK_DTE,
         realized_vol_hint=tech.realized_vol,
         max_delta=hi,
+        stats=stats,
     )
     if put is not None:
         if not (lo <= abs(put.computed_delta) <= hi):
@@ -164,38 +170,50 @@ def _find_and_filter_put(symbol: str, spot: float, tech) -> SelectedOption | Non
     return put
 
 
-def fetch_option_for_symbol(symbol: str, spot: float) -> tuple[SelectedOption | None, str | None]:
+def fetch_option_for_symbol(symbol: str, spot: float) -> tuple[SelectedOption | None, str | None, str | None]:
     """On-demand, single-symbol options lookup — the ONLY path that calls
     the options chain now (see module docstring point 4). Wired to a
     per-row "Get Option" button in the UI rather than run automatically
-    for every scan survivor. Returns (put_or_None, error_message_or_None).
+    for every scan survivor. Returns (put_or_None, error_message_or_None, note_or_None); the
+    note explains a None put that is NOT an error: "no_live_quotes" (every
+    contract had a zero bid/ask, which is what Yahoo serves outside market
+    hours) or "no_chain" (no expirations listed in the search window).
     Respects the same rate-limit circuit breaker as scan_universe: refuses
     to run during an active cooldown, and trips it if it hits
     YFRateLimitError itself (one bad symbol still protects the rest of
     your remaining "Get Option" clicks today)."""
     active, remaining_s = rate_limit_active()
     if active:
-        return None, f"skipped — rate-limited by Yahoo Finance; cooling down (~{int(remaining_s)}s left)"
+        return None, f"skipped — rate-limited by Yahoo Finance; cooling down (~{int(remaining_s)}s left)", None
 
     try:
         daily = get_price_histories_batch([symbol], period="2y").get(symbol)
         if daily is None or daily.empty:
-            return None, "no price history available"
+            return None, "no price history available", None
         tech = build_snapshot(symbol, daily)
     except YFRateLimitError:
         _trip_rate_limit()
-        return None, "rate limited by Yahoo Finance (price history)"
+        return None, "rate limited by Yahoo Finance (price history)", None
     except Exception as exc:
-        return None, str(exc)
+        return None, str(exc), None
 
     try:
-        put = _find_and_filter_put(symbol, spot, tech)
-        return put, None
+        stats: dict = {}
+        put = _find_and_filter_put(symbol, spot, tech, stats=stats)
+        note = None
+        if put is None:
+            if stats.get("expirations", 0) == 0:
+                note = "no_chain"
+            elif stats.get("contracts_seen", 0) > 0 and stats.get("contracts_live", 0) < max(1, 0.2 * stats["contracts_seen"]):
+                # Outside market hours Yahoo zeroes most bids/asks; a few
+                # stale two-sided quotes can linger, so use a share, not zero.
+                note = "no_live_quotes"
+        return put, None, note
     except YFRateLimitError:
         _trip_rate_limit()
-        return None, "rate limited by Yahoo Finance (options chain)"
+        return None, "rate limited by Yahoo Finance (options chain)", None
     except Exception as exc:
-        return None, f"options chain error: {exc}"
+        return None, f"options chain error: {exc}", None
 
 
 def _full_scan(symbol: str, tech, stop_event: threading.Event) -> CspRow:
@@ -230,7 +248,7 @@ def _full_scan(symbol: str, tech, stop_event: threading.Event) -> CspRow:
     except YFRateLimitError:
         stop_event.set()
         _trip_rate_limit()
-        return CspRow(symbol=symbol, sector=None, spot=0.0, error="rate limited by Yahoo Finance — stopping remaining calls in this scan")
+        return CspRow(symbol=symbol, sector=None, spot=0.0, error="Yahoo Finance is limiting requests right now. Wait a few minutes and try again.")
     except Exception as exc:
         return CspRow(symbol=symbol, sector=None, spot=0.0, error=str(exc))
 
@@ -270,7 +288,7 @@ def _full_scan(symbol: str, tech, stop_event: threading.Event) -> CspRow:
     gate_passed, gate_reasons = passes_curated_quality_gate(fund)
 
     return CspRow(
-        symbol=symbol, sector=fund.sector, spot=spot, checks=checks,
+        symbol=symbol, sector=fund.sector, spot=spot, checks=checks, name=fund.name,
         checks_passed=passed, checks_evaluated=evaluated,
         next_earnings_date=fund.next_earnings_date,
         day_change_pct=day_change_pct, beta=fund.beta,
@@ -285,10 +303,18 @@ def _full_scan(symbol: str, tech, stop_event: threading.Event) -> CspRow:
 def scan_universe(
     symbols: list[str], progress_cb=None, require_uptrend: bool = True, max_workers: int = 10,
     min_realized_vol: float | None = None, require_curated_fundamentals: bool = False,
-    cancel_event: threading.Event | None = None,
-) -> tuple[list[CspRow], int, int, int]:
+    cancel_event: threading.Event | None = None, force_include: set[str] | None = None,
+) -> tuple[list[CspRow], int, int, int, dict[str, str]]:
     """Returns (rows, num_removed_for_no_uptrend, num_removed_for_low_vol,
-    num_removed_for_fundamentals).
+    num_removed_for_fundamentals, removed_reasons) — removed_reasons maps
+    each symbol the scan dropped to a plain-English reason, so the UI can
+    answer "why is X missing?".
+
+    force_include: symbols the user picked by hand. They skip every filter
+    below (uptrend, vol floor, Strict fundamentals gate) and always come
+    back as rows marked forced=True, with all the checks still computed so
+    the dashboard can show how they actually look. Only a real data error
+    (e.g. no price history) can still leave one as an error row.
 
     Two-phase, per the module docstring: (1) one batched price-history
     fetch + cheap local uptrend check for every symbol, (2) the expensive
@@ -325,6 +351,7 @@ def scan_universe(
     not yet reached when cancelled simply isn't in the returned rows;
     that's an intentional partial result, not an error."""
     total = len(symbols)
+    force_include = {x.upper() for x in (force_include or ())}
     progress_lock = threading.Lock()
     completed = 0
 
@@ -339,31 +366,32 @@ def scan_universe(
     if active:
         rows = [CspRow(
             symbol=sym, sector=None, spot=0.0,
-            error=f"skipped — rate-limited by Yahoo Finance {int(remaining_s)}s ago-ish; cooling down before retrying",
+            error="Yahoo Finance is limiting requests right now. Wait a few minutes and try again.",
         ) for sym in symbols]
         for sym in symbols:
             report(sym)
-        return rows, 0, 0, 0
+        return rows, 0, 0, 0, {}
 
     stop_event = cancel_event if cancel_event is not None else threading.Event()
     if stop_event.is_set():
         rows = [CspRow(symbol=sym, sector=None, spot=0.0, error="cancelled") for sym in symbols]
         for sym in symbols:
             report(sym)
-        return rows, 0, 0, 0
+        return rows, 0, 0, 0, {}
     try:
         price_histories = get_price_histories_batch(symbols, period="2y", cancel_event=stop_event)
     except YFRateLimitError:
         _trip_rate_limit()
-        rows = [CspRow(symbol=sym, sector=None, spot=0.0, error="rate limited by Yahoo Finance (price history) — scan stopped") for sym in symbols]
+        rows = [CspRow(symbol=sym, sector=None, spot=0.0, error="Yahoo Finance is limiting requests right now. Wait a few minutes and try again.") for sym in symbols]
         for sym in symbols:
             report(sym)
-        return rows, 0, 0, 0
+        return rows, 0, 0, 0, {}
 
     survivors: list[tuple[str, object]] = []  # (symbol, TechnicalSnapshot)
     rows: list[CspRow] = []
     removed = 0
     removed_low_vol = 0
+    removed_reasons: dict[str, str] = {}
 
     for sym in symbols:
         if stop_event.is_set():
@@ -382,15 +410,18 @@ def scan_universe(
             report(sym)
             continue
 
-        if require_uptrend and not check_uptrend(tech)[0]:
-            removed += 1
-            report(sym)
-            continue
+        if sym.upper() not in force_include:
+            if require_uptrend and not check_uptrend(tech)[0]:
+                removed += 1
+                removed_reasons[sym] = "its price is not rising (it is below its 30-week average)"
+                report(sym)
+                continue
 
-        if min_realized_vol is not None and (tech.realized_vol is None or tech.realized_vol < min_realized_vol):
-            removed_low_vol += 1
-            report(sym)
-            continue
+            if min_realized_vol is not None and (tech.realized_vol is None or tech.realized_vol < min_realized_vol):
+                removed_low_vol += 1
+                removed_reasons[sym] = f"it barely moves (under {min_realized_vol * 100:.0f}% volatility a year), so the strictness level dropped it"
+                report(sym)
+                continue
 
         survivors.append((sym, tech))
 
@@ -417,23 +448,29 @@ def scan_universe(
                         if not other_future.done():
                             other_future.cancel()
 
+    for r in rows:
+        if r.symbol.upper() in force_include:
+            r.forced = True
+
     removed_fundamentals = 0
     if require_curated_fundamentals:
         kept_rows = []
         for r in rows:
-            if r.error is not None or r.curated_gate_passed is not False:
+            if r.error is not None or r.forced or r.curated_gate_passed is not False:
                 kept_rows.append(r)
             else:
                 removed_fundamentals += 1
+                removed_reasons[r.symbol] = "it did not pass the company-health checks of the High strictness level"
         rows = kept_rows
 
-    return rows, removed, removed_low_vol, removed_fundamentals
+    return rows, removed, removed_low_vol, removed_fundamentals, removed_reasons
 
 
 def row_to_dict(r: CspRow) -> dict:
     d = {
         "symbol": r.symbol,
         "sector": r.sector,
+        "name": r.name,
         "spot": r.spot,
         "error": r.error,
         "checks": r.checks,
@@ -449,6 +486,7 @@ def row_to_dict(r: CspRow) -> dict:
         "options_error": r.options_error,
         "curated_gate_passed": r.curated_gate_passed,
         "curated_gate_reasons": r.curated_gate_reasons,
+        "forced": r.forced,
         "put": None,
     }
     if r.put:

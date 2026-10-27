@@ -39,7 +39,7 @@ def cmd_web(args):
     from web.app import run_dashboard
 
     limit = None if (args.limit and str(args.limit).lower() == "all") else args.limit
-    print(f"Starting dashboard at http://127.0.0.1:{args.port}  (initial scan: {'full list' if limit is None else f'first {limit}'} of the default universe/mode — change either in the page once it loads)")
+    print(f"Starting dashboard at http://127.0.0.1:{args.port}  (first run scans the first {limit or 50} S&P 500 stocks; after that it resumes your last scan. Change anything in the page once it loads.)")
     run_dashboard(port=args.port, initial_limit=limit)
 
 
@@ -177,7 +177,7 @@ def main():
 
     p_web = sub.add_parser("web", help="Local sortable dashboard of cash-secured-put candidates, ranked by RoR%.")
     p_web.add_argument("--port", type=int, default=8899)
-    p_web.add_argument("--limit", type=int, default=None, help="Only scan the first N S&P 500 symbols on startup (default: full list, matching the page's dropdown default).")
+    p_web.add_argument("--limit", type=int, default=None, help="On a first-ever run, scan the first N S&P 500 symbols (default: 50). Ignored once you have a saved last scan.")
     p_web.set_defaults(func=cmd_web)
 
     args = parser.parse_args()

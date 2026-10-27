@@ -65,6 +65,7 @@ class Fundamentals:
     # and Yahoo reports it ~1-2 weeks after that, so this is NEVER
     # real-time; treat it as a slow-moving signal, not current-day data.
     short_pct_float: float | None  # fraction, e.g. 0.084 = 8.4% of float sold short
+    name: str | None = None  # company name, for display next to the ticker
 
 
 def _earnings_dates_df(t: yf.Ticker) -> pd.DataFrame | None:
@@ -137,6 +138,7 @@ def get_fundamentals(symbol: str) -> Fundamentals:
         current_price=info.get("currentPrice") or info.get("regularMarketPrice"),
         previous_close=info.get("previousClose") or info.get("regularMarketPreviousClose"),
         short_pct_float=info.get("shortPercentOfFloat"),
+        name=info.get("shortName") or info.get("longName"),
     )
 
 

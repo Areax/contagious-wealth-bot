@@ -47,7 +47,7 @@ def create_universe(mode: str, progress_cb=None, cancel_event=None) -> dict:
     cancel_event: threading.Event | None — see scan_universe."""
     criteria = _MODE_CRITERIA[mode]
     source_symbols = get_russell_symbols("3000")
-    rows, removed_uptrend, removed_vol, removed_fundamentals = scan_universe(
+    rows, removed_uptrend, removed_vol, removed_fundamentals, _reasons = scan_universe(
         source_symbols,
         progress_cb=progress_cb,
         require_uptrend=True,

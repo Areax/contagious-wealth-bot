@@ -215,6 +215,7 @@ def find_put_at_least_delta(
     max_expirations_checked: int = 6,
     realized_vol_hint: float | None = None,  # see _reference_iv — strongly recommended, pass tech.realized_vol
     max_delta: float | None = None,  # magnitude ceiling — see docstring; None keeps the old 2x-overshoot tolerance
+    stats: dict | None = None,  # if given, filled with contracts_seen / contracts_live so the caller can tell "no match" from "no live quotes at all" (market closed)
 ) -> SelectedOption | None:
     """For the CSP dashboard: 'the nearest-or-greater-than-target-delta put,
     at least min_dte days out, as close to min_dte as possible.'
@@ -252,6 +253,8 @@ def find_put_at_least_delta(
     searching farther-dated expirations instead of settling for a match
     it's just going to discard anyway."""
     expirations = _nearest_expirations_in_range(symbol, min_dte, max_dte)
+    if stats is not None:
+        stats.update(expirations=len(expirations), contracts_seen=0, contracts_live=0)
     if not expirations:
         return None
 
@@ -263,6 +266,9 @@ def find_put_at_least_delta(
 
     for exp in expirations[:max_expirations_checked]:
         chain = [c for c in get_option_chain(symbol, exp) if c.option_type == "put"]
+        if stats is not None:
+            stats["contracts_seen"] += sum(1 for c in chain if c.dte > 0)
+            stats["contracts_live"] += sum(1 for c in chain if c.dte > 0 and _has_real_market(c))
         ref_iv = _reference_iv(chain, spot, "put", realized_vol_hint)
         if ref_iv is None:
             continue  # this expiration's data isn't trustworthy enough to validate any strike against — try the next one
