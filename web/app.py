@@ -573,17 +573,19 @@ INDEX_HTML = """<!doctype html>
 <title>Cash-Secured Put Finder</title>
 <style>
   :root { color-scheme: light dark; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 20px; background: #f7f7f8; color: #1a1a1a; }
-  @media (prefers-color-scheme: dark) { body { background: #16171a; color: #e8e8ea; } }
-  h1 { font-size: 20px; margin: 0 0 4px 0; }
+  :root { --accent: #00a862; --accent-ink: #fff; --muted: #6b7280; --line: #e5e7eb; --surface: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --accent: #00c805; --accent-ink: #000; --muted: #9ca3af; --line: #2a2b30; --surface: #0f1012; } }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 28px 32px; background: #fff; color: #111; font-size: 15px; }
+  @media (prefers-color-scheme: dark) { body { background: #0f1012; color: #ececf0; } }
+  h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.01em; margin: 8px 0 2px 0; }
   .sub { color: #888; font-size: 13px; margin-bottom: 6px; }
   .as-of { color: #555; font-size: 13px; font-weight: 600; margin-bottom: 16px; }
   @media (prefers-color-scheme: dark) { .as-of { color: #bbb; } }
   .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-  .controls input, .controls select { padding: 6px 8px; border-radius: 6px; border: 1px solid #ccc; }
+  .controls input, .controls select, .controls textarea, .ownrow select { padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: inherit; font-size: 14px; font-family: inherit; }
   .toggle { display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; font-weight: normal; }
   .toggle input { padding: 0; width: auto; }
-  #customSymbols { width: 320px; height: 32px; resize: vertical; font-family: inherit; font-size: 13px; }
+  #customSymbols { width: 300px; height: 40px; box-sizing: border-box; resize: none; font-family: inherit; font-size: 14px; line-height: 20px; }
   .get-option-btn { padding: 4px 10px; border-radius: 5px; border: 1px solid #2563eb; background: transparent; color: #2563eb; cursor: pointer; font-size: 12px; }
   .get-option-btn:hover { background: #2563eb; color: white; }
   .get-option-btn:disabled { opacity: 0.5; cursor: default; }
@@ -592,8 +594,8 @@ INDEX_HTML = """<!doctype html>
   .refresh-option-btn:hover { color: #2563eb; }
   .refresh-option-btn:disabled { opacity: 0.4; cursor: wait; }
   @media (prefers-color-scheme: dark) { .refresh-option-btn:hover { color: #7ab0ff; } }
-  .controls button { padding: 7px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; cursor: pointer; font-size: 13px; }
-  .controls button:disabled { background: #93c5fd; cursor: default; }
+  .controls button, .ownrow button { padding: 9px 18px; border-radius: 999px; border: none; background: var(--accent); color: var(--accent-ink); cursor: pointer; font-size: 14px; font-weight: 600; }
+  .controls button:disabled, .ownrow button:disabled { opacity: 0.45; cursor: default; }
   /* Tactile "pressed" feedback on every button, native :active — instant,
      needs no JS, works even for a click that turns out to be a no-op. */
   button:active:not(:disabled) { transform: scale(0.96); }
@@ -606,17 +608,13 @@ INDEX_HTML = """<!doctype html>
   .get-option-btn .spinner { border-color: rgba(37,99,235,0.35); border-top-color: #2563eb; }
   @media (prefers-color-scheme: dark) { .get-option-btn .spinner { border-color: rgba(122,176,255,0.35); border-top-color: #7ab0ff; } }
   @keyframes spin { to { transform: rotate(360deg); } }
-  #status { font-size: 13px; color: #666; }
-  table { border-collapse: collapse; width: 100%; font-size: 12px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-radius: 8px; overflow: hidden; }
-  @media (prefers-color-scheme: dark) { table { background: #222327; } }
-  th, td { padding: 6px 3px; text-align: right; border-bottom: 1px solid #eee; white-space: nowrap; }
-  @media (prefers-color-scheme: dark) { th, td { border-bottom: 1px solid #333; } }
+  #status { font-size: 13px; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; background: var(--surface); }
+  th, td { padding: 9px 4px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; }
-  th { cursor: pointer; user-select: none; background: #fafafa; font-weight: 600; position: sticky; top: 0; border-bottom: 1px dotted #999; }
-  th:hover { background: #eef2ff; }
-  @media (prefers-color-scheme: dark) { th:hover { background: #2a2f45; } }
-  @media (prefers-color-scheme: dark) { th { background: #1c1d21; } }
-  th.sorted { color: #2563eb; }
+  th { cursor: pointer; user-select: none; background: var(--surface); font-weight: 500; font-size: 12px; color: var(--muted); position: sticky; top: 0; }
+  th:hover { color: inherit; }
+  th.sorted { color: var(--accent); }
   /* JS-positioned tooltip (not a CSS ::after anchored to the header) so it
      can be clamped to the viewport — a header-relative tooltip bleeds off
      the right edge for right-hand columns like OI/RoR%. See showTooltip(). */
@@ -638,8 +636,7 @@ INDEX_HTML = """<!doctype html>
     z-index: 200;
     pointer-events: none;
   }
-  tr:hover { background: #f0f4ff; }
-  @media (prefers-color-scheme: dark) { tr:hover { background: #202634; } }
+  tr:hover { background: rgba(127,127,127,0.07); }
   .check-y { color: #16a34a; font-weight: bold; }
   .check-n { color: #dc2626; font-weight: bold; }
   .check-u { color: #999; }
@@ -647,50 +644,42 @@ INDEX_HTML = """<!doctype html>
   .err { color: #dc2626; }
   .ror-cell { font-weight: 600; }
   .table-wrap { overflow-x: auto; }
-  .scanbar { margin-bottom: 10px; }
+  .scanbar { margin-bottom: 18px; }
   .scanbar .controls { margin-bottom: 4px; }
   .scanbar select { max-width: 460px; }
-  details.more { font-size: 13px; margin-top: 6px; }
-  details.more summary { cursor: pointer; color: #2563eb; }
-  @media (prefers-color-scheme: dark) { details.more summary { color: #7ab0ff; } }
+  details.more { font-size: 13px; margin-top: 8px; }
+  details.more summary { cursor: pointer; color: var(--muted); }
   details.more .controls { margin-top: 8px; margin-bottom: 4px; }
-  .summary { max-width: 980px; margin: 0 0 10px 0; }
-  .summary p { margin: 0 0 3px 0; }
+  .summary { max-width: 980px; margin: 0 0 14px 0; }
+  .summary p { margin: 0 0 6px 0; }
   .whererow { font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .whererow input { padding: 4px 6px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; }
-  .asof-line { font-size: 13px; color: #666; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  @media (prefers-color-scheme: dark) { .asof-line { color: #a0a0a8; } }
-  button.small { padding: 4px 10px; border-radius: 6px; border: 1px solid #2563eb; background: transparent; color: #2563eb; cursor: pointer; font-size: 12px; }
-  button.small:hover:not(:disabled) { background: #2563eb; color: white; }
+  .whererow input { padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: inherit; font-size: 13px; }
+  .asof-line { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button.small { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; font-size: 12px; font-weight: 500; }
+  button.small:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   button.small:disabled { opacity: 0.6; cursor: default; }
-  @media (prefers-color-scheme: dark) { button.small { color: #7ab0ff; border-color: #7ab0ff; } button.small:hover:not(:disabled) { background: #7ab0ff; color: #111; } }
   button.small.stop { color: #dc2626; border-color: #dc2626; }
   button.small.stop:hover:not(:disabled) { background: #dc2626; color: white; }
   button.small .spinner { border-color: rgba(37,99,235,0.35); border-top-color: #2563eb; }
   .field { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-  .scanbar .ownrow { border-top: 1px solid #e3e3e8; margin-top: 8px; padding-top: 10px; font-size: 13px; }
-  @media (prefers-color-scheme: dark) { .scanbar .ownrow { border-top-color: #33343b; } }
+  .scanbar .ownrow { margin-top: 10px; font-size: 13px; }
   .low-oi { color: #d97706; }
   .sub { display: block; font-size: 10px; color: #888; line-height: 1.1; }
   .warn-cell { color: #d97706; }
   .warn-cell .sub { color: #d97706; }
   .co { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 11px; font-weight: normal; color: #888; max-width: 100px; overflow: hidden; white-space: normal; line-height: 1.2; }
   td:first-child { font-weight: 600; }
-  .ownrow textarea { width: 200px; height: 26px; min-height: 26px; }
-  .ownrow select { padding: 5px 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; }
-  .ownrow button { padding: 6px 14px; border-radius: 6px; border: none; background: #2563eb; color: white; cursor: pointer; font-size: 13px; }
-  .ownrow button.warn { background: #d97706; }
-  .ownrow button:disabled { background: #93c5fd; }
+  .ownrow textarea { width: 240px; height: 38px; min-height: 38px; resize: none; }
+  .ownrow button.warn { background: #d97706; color: #fff; }
   .hint.inline { display: inline; margin: 0; }
-  .filterbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; max-width: 980px; margin: 0 0 6px 0; }
-  .filterlabel { font-weight: 600; }
+  .filterbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); max-width: 980px; margin: 0 0 8px 0; }
+  .filterlabel { font-weight: 600; color: inherit; }
   .filterbar details.columns { margin: 0; }
+  .filterbar details.columns summary { cursor: pointer; }
   .filterbar details.columns .controls { margin-top: 6px; }
-  .tabs { display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 1px solid #ddd; }
-  @media (prefers-color-scheme: dark) { .tabs { border-bottom-color: #33343b; } }
-  .tab { padding: 8px 16px; border: 1px solid transparent; border-bottom: none; background: transparent; color: #666; cursor: pointer; font-size: 14px; border-radius: 8px 8px 0 0; }
-  .tab.active { background: white; color: #1a1a1a; border-color: #ddd; font-weight: 600; }
-  @media (prefers-color-scheme: dark) { .tab { color: #a0a0a8; } .tab.active { background: #1e1f24; color: #e8e8ea; border-color: #33343b; } }
+  .tabs { display: flex; gap: 22px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+  .tab { padding: 8px 2px 10px; border: none; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; font-family: inherit; }
+  .tab.active { color: inherit; border-bottom-color: var(--accent); font-weight: 600; }
   .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; margin: 1px 4px 1px 0; white-space: nowrap; }
   .badge.bullish { background: #dcfce7; color: #166534; }
   .badge.bearish { background: #fee2e2; color: #991b1b; }
@@ -706,40 +695,34 @@ INDEX_HTML = """<!doctype html>
   .sig .st { font-size: 10px; color: #888; margin-left: 3px; white-space: nowrap; }
   .sig .why { display: block; font-size: 10px; color: #888; white-space: normal; line-height: 1.3; margin-bottom: 3px; }
   #sectorTable th:first-child, #sectorTable td:first-child { position: static; }
-  .lead { font-size: 15px; margin: 0 0 10px 0; max-width: 760px; }
-  .hint { color: #666; font-size: 13px; margin: 6px 0 0 0; }
-  @media (prefers-color-scheme: dark) { .hint { color: #a0a0a8; } }
-  .card { background: white; border: 1px solid #e3e3e8; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; max-width: 980px; }
-  @media (prefers-color-scheme: dark) { .card { background: #1e1f24; border-color: #33343b; } }
+  .lead { font-size: 14px; color: var(--muted); margin: 0 0 16px 0; max-width: 760px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0 0; }
+  .card { background: transparent; border: none; padding: 0; margin-bottom: 14px; max-width: 980px; }
   .card h2 { font-size: 15px; margin: 0 0 6px 0; display: flex; align-items: center; gap: 8px; }
   .card .controls { margin-bottom: 8px; }
   .step { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #2563eb; color: white; font-size: 13px; }
-  .glossary, .advanced, .columns { margin-bottom: 12px; font-size: 13px; max-width: 980px; }
-  .glossary summary, .advanced summary, .columns summary { cursor: pointer; color: #2563eb; font-weight: 600; }
-  @media (prefers-color-scheme: dark) { .glossary summary, .advanced summary, .columns summary { color: #7ab0ff; } }
+  .glossary, .advanced, .columns { margin-bottom: 14px; font-size: 13px; max-width: 980px; }
+  .glossary summary, .advanced summary, .columns summary { cursor: pointer; color: var(--muted); font-weight: 500; }
   .glossary dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 10px 0 0 0; }
   .glossary dt { font-weight: 600; }
   .glossary dd { margin: 0; color: #666; }
   @media (prefers-color-scheme: dark) { .glossary dd { color: #a0a0a8; } }
-  .advanced { border: 1px dashed #c9c9d1; border-radius: 10px; padding: 10px 16px; }
+  .advanced { margin-top: 18px; }
   .advanced[open] summary { margin-bottom: 10px; }
   .columns { margin: 8px 0; }
   .columns .controls { margin-top: 8px; }
   .card h3 { font-size: 13px; margin: 14px 0 4px 0; }
-  .listlabel { font-weight: 600; margin: 0 0 4px 0; font-size: 14px; }
-  .cue { font-size: 13px; color: #b45309; font-weight: 600; margin: 4px 0 0 0; }
-  .statusline { font-size: 13px; margin: 4px 0 0 0; color: #1a1a1a; }
-  @media (prefers-color-scheme: dark) { .statusline { color: #e8e8ea; } }
-  #status { color: #1a1a1a; font-weight: 500; }
-  @media (prefers-color-scheme: dark) { #status { color: #e8e8ea; } }
+  .listlabel { font-weight: 400; color: var(--muted); margin: 0 0 2px 0; font-size: 13px; }
+  .cue { font-size: 13px; color: #d97706; font-weight: 600; margin: 4px 0 0 0; }
+  .statusline { font-size: 13px; margin: 4px 0 0 0; color: var(--muted); }
+  .statusline:empty { display: none; }
   section.card.own { border-style: dashed; }
   .optional { font-weight: normal; color: #888; font-size: 13px; }
   .step.alt { background: #888; width: auto; padding: 0 8px; border-radius: 11px; }
   .radios { display: flex; flex-direction: column; gap: 4px; }
-  .n { color: #888; font-size: 12px; }
-  th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; background: #fff; }
-  @media (prefers-color-scheme: dark) { th:first-child, td:first-child { background: #222327; } }
-  .group-row th { cursor: default; background: transparent; text-align: center; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #2563eb; border-bottom: 2px solid #2563eb; position: static; }
+  .n { color: var(--muted); font-size: 12px; font-weight: 400; }
+  th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; background: var(--surface); }
+  .group-row th { cursor: default; background: transparent; text-align: center; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom: 1px solid var(--line); position: static; }
   .group-row th:hover { background: transparent; }
   tr.divider td { text-align: left; background: #eef2ff; color: #1e3a8a; font-weight: 600; font-size: 12px; padding: 6px 10px; white-space: normal; }
   td[colspan="6"] { white-space: normal; }
@@ -754,14 +737,13 @@ INDEX_HTML = """<!doctype html>
   tr.flashrow td { animation: flash 2s ease; }
   label.toggle.flash { animation: flash 1.6s ease; border-radius: 4px; }
   a.reason { color: inherit; text-decoration: underline dotted; cursor: pointer; }
-  .rowcount { font-size: 13px; font-weight: 600; margin: 8px 0 0 0; }
+  .rowcount { font-size: 20px; font-weight: 600; margin: 0 0 8px 0; }
   p.legend { max-width: 980px; }
-  .legend { font-size: 12px; color: #666; margin: 8px 0 0 0; }
-  @media (prefers-color-scheme: dark) { .legend { color: #a0a0a8; } }
-  .controls button.primary { padding: 9px 22px; font-size: 14px; font-weight: 600; }
+  .legend { font-size: 12px; color: var(--muted); margin: 6px 0 10px 0; }
+  .controls button.primary { padding: 10px 24px; font-size: 14px; font-weight: 600; }
   .controls button.warn { background: #d97706; }
-  .controls button.danger-fill { background: #dc2626; }
-  .controls button.danger-outline { background: transparent; color: #dc2626; border: 1px solid #dc2626; }
+  .controls button.danger-fill { background: #dc2626; color: #fff; }
+  .controls button.danger-outline { background: transparent; color: #dc2626; border: 1px solid #dc2626; font-weight: 500; }
   .controls button.danger-outline:disabled { background: transparent; color: #aaa; border-color: #ccc; opacity: 0.7; }
   .controls button.danger-outline:not(:disabled):hover { background: #dc2626; color: white; }
 </style>
@@ -772,10 +754,10 @@ INDEX_HTML = """<!doctype html>
     <button class="tab" id="tabBtnSectors" onclick="showTab('sectors')">Sector signals</button>
   </nav>
   <div id="tabPut">
-  <h1>Cash-Secured Put Finder</h1>
-  <p class="lead">Finds stocks whose price is rising and shows how much you would be paid to promise to buy them at a lower price. &ldquo;Cash-secured&rdquo; means you keep enough cash on hand to buy the shares if asked. Nothing here buys or sells anything.</p>
+  <h1>Cash-Secured Puts</h1>
+  <p class="lead">Rising stocks, and what you get paid to promise to buy them lower. Nothing here trades.</p>
   <details class="glossary">
-    <summary>New here? What do these words mean?</summary>
+    <summary>Glossary</summary>
     <p class="subhead">The basics</p>
     <dl>
       <dt>Ticker</dt><dd>A stock's short code, like AAPL for Apple. The company name is shown under it.</dd>
@@ -810,83 +792,69 @@ INDEX_HTML = """<!doctype html>
 
   <section class="card scanbar">
     <div class="controls">
-      <span class="field"><label for="universeSelect">Stock list:</label>
-      <select id="universeSelect" onchange="onUniverseChange()">
-        <option value="sp500" selected>S&amp;P 500 &mdash; 500 large US companies (scan about 1 min, then 1 to 3 min for put prices)</option>
-        <option value="russell2000">Russell 2000 &mdash; about 2,000 small companies (slow: several minutes, then put prices)</option>
-        <option value="russell3000">Russell 3000 &mdash; about 2,600 stocks (slow: several minutes, then put prices)</option>
+      <select id="universeSelect" onchange="onUniverseChange()" title="Which stocks to scan">
+        <option value="sp500" selected>S&amp;P 500</option>
+        <option value="russell2000">Russell 2000</option>
+        <option value="russell3000">Russell 3000</option>
         <optgroup id="generatedUniverseGroup" label="Saved lists"></optgroup>
-      </select></span>
-    </div>
-    <p class="hint"><b>Stock list:</b> the group of stocks to scan. <span id="universeNote"></span></p>
-    <p id="listChangeCue" class="cue" style="display:none;">You changed the stock list. Press Run scan to use it.</p>
-    <div class="controls">
-      <span class="field"><label for="modeSelect">Strictness:</label>
-      <select id="modeSelect" onchange="applyModePreset()">
-        <option value="general">Low &mdash; every stock whose price is rising</option>
-        <option value="options" selected>Medium &mdash; only stocks that move enough to pay well</option>
-        <option value="curated">High &mdash; only healthy companies that move enough (shortest list)</option>
-      </select></span>
-    </div>
-    <p class="hint"><b>Strictness:</b> <span id="modeNote"></span> <span id="styleCount"></span> Changing it re-filters this table at once; the next scan uses it too.</p>
-    <div class="controls">
+      </select>
+      <select id="modeSelect" onchange="applyModePreset()" title="How picky the scan is. Low: every rising stock. Medium: also moves enough to pay well. High: also a healthy company.">
+        <option value="general">Low strictness</option>
+        <option value="options" selected>Medium strictness</option>
+        <option value="curated">High strictness</option>
+      </select>
       <button id="scanBtn" class="primary" onclick="startScan()">Run scan</button>
       <button id="cancelBtn" class="danger-fill" onclick="cancelRun()" style="display:none;">Cancel</button>
-      <span id="status">idle</span>
+      <span id="status"></span>
     </div>
-    <p class="hint"><b>Run scan:</b> checks every stock in the list (about a minute for the S&amp;P 500), keeps the rising ones that pass the strictness level, then loads put prices by itself (about 1.5 seconds per stock kept, usually 1 to 3 minutes). The line below says when everything is done.</p>
+    <p id="listChangeCue" class="cue" style="display:none;">List changed. Run scan to apply.</p>
     <p id="fetchStatus" class="statusline"></p>
+    <span id="universeNote" style="display:none"></span><span id="modeNote" style="display:none"></span><span id="styleCount" style="display:none"></span>
     <div class="controls ownrow">
-      <span class="field"><label for="customSymbols">Or look up just these tickers:</label>
-      <textarea id="customSymbols" placeholder="AAPL, MSFT, KO" rows="1"></textarea></span>
+      <textarea id="customSymbols" placeholder="Your tickers: AAPL, MSFT, KO" rows="1" title="Always shown, even where a filter would hide them. Cleared by the next scan."></textarea>
       <select id="customScanMode" onchange="updateCustomRunLabel()" title="Add: your tickers join the table. Replace: the table shows only your tickers until the next scan.">
-        <option value="add" selected>Add to the table</option>
-        <option value="replace">Replace the table with these</option>
+        <option value="add" selected>Add to table</option>
+        <option value="replace">Replace table</option>
       </select>
       <button id="customRunBtn" onclick="startCustomRun()">Run</button>
-      <span class="hint inline">Always shown, even where a filter would hide them. Cleared by the next scan. Your stock lists are not changed.</span>
       <span id="customStatus" class="statusline"></span>
     </div>
     <details class="more">
-      <summary>More scan options</summary>
+      <summary>More options</summary>
       <div class="controls">
-        <label for="limitSelect">How many to scan:</label>
+        <label for="limitSelect">Scan</label>
         <select id="limitSelect" onchange="updateListChangeCue()">
-          <option value="25">Only the first 25 (quick test)</option>
-          <option value="50">Only the first 50</option>
-          <option value="100">Only the first 100</option>
-          <option value="all" selected>Every stock in the list</option>
+          <option value="25">first 25</option>
+          <option value="50">first 50</option>
+          <option value="100">first 100</option>
+          <option value="all" selected>every stock</option>
         </select>
       </div>
-      <p class="hint">Saved lists are shortcuts: stocks that already passed a full scan. You can make or delete them under Advanced, at the bottom of the page. (A stock list is sometimes called a &ldquo;universe&rdquo;.)</p>
     </details>
   </section>
 
   <div class="summary">
     <p id="listLabel" class="listlabel"></p>
     <p id="rowCount" class="rowcount"></p>
-    <p class="whererow"><label for="whereInput">Where is a stock?</label> <input id="whereInput" placeholder="ticker, e.g. NVDA" size="12" onkeydown="if (event.key === 'Enter') whereIs()"> <button class="small" onclick="whereIs()">Find it</button> <span id="whereAnswer" class="hint inline"></span></p>
+    <p class="whererow"><input id="whereInput" placeholder="Find a ticker" size="12" onkeydown="if (event.key === 'Enter') whereIs()"> <button class="small" onclick="whereIs()">Find</button> <span id="whereAnswer" class="hint inline"></span></p>
     <p class="asof-line">
-      <span id="asOf">Put prices: &mdash;</span>
-      <button id="fetchAllBtn" class="small" onclick="fetchAllOptions()">Update put prices</button>
+      <span id="asOf"></span>
+      <button id="fetchAllBtn" class="small" onclick="fetchAllOptions()">Update prices</button>
       <button id="cancelFetchBtn" class="small stop" onclick="cancelRun()" style="display:none;">Stop</button>
-      <label class="toggle" title="Ticked: every shown stock is looked up again, even ones that already have a price (prices change during the day). Unticked: only stocks still missing a price. Does not apply to the automatic lookup after a scan."><input type="checkbox" id="forceRefreshToggle" checked> also re-check stocks that already have a price</label>
+      <label class="toggle" title="Ticked: every shown stock is looked up again, even ones that already have a price. Unticked: only stocks still missing a price."><input type="checkbox" id="forceRefreshToggle" checked> include priced</label>
     </p>
   </div>
 
 
   <div class="filterbar">
-    <span class="filterlabel">Filters <span class="hint inline">(only change what you see)</span></span>
-    <label class="toggle" title="Hides puts that expire more than 45 days from now."><input type="checkbox" id="hideFarDteToggle" checked onchange="renderTable()"> Hide puts lasting over 45 days <span class="n" data-count="hideFarDteToggle"></span></label>
-    <label class="toggle" title="Delta above 0.30 means roughly a 30%+ chance you end up having to buy the shares."><input type="checkbox" id="hideRiskyDeltaToggle" checked onchange="renderTable()"> Hide over a 30% chance of buying <span class="n" data-count="hideRiskyDeltaToggle"></span></label>
-    <label class="toggle" title="Hides puts that pay less than 2.5%. Stocks with no price yet or none found are kept."><input type="checkbox" id="hideLowRorToggle" checked onchange="renderTable()"> Hide paying under 2.5% <span class="n" data-count="hideLowRorToggle"></span></label>
-    <label class="toggle" title="Hides stocks where prices were checked but no put matched. Often just a thin options listing on Yahoo's free data, not a bad stock."><input type="checkbox" id="hideUnknownToggle" onchange="renderTable()"> Hide no put found <span class="n" data-count="hideUnknownToggle"></span></label>
-    <label class="toggle" title="An extra, stricter trend check: price above its 50/100/200-day averages and higher highs and lows than 12 or 18 months ago. Every stock here already passes the basic 30-week check."><input type="checkbox" id="hideNonUptrendToggle" onchange="renderTable()"> Hide without a 12-18 month trend <span class="n" data-count="hideNonUptrendToggle"></span></label>
-  </div>
-  <div class="filterbar">
-    <span class="filterlabel">Columns</span>
+    <span class="filterlabel">Hide</span>
+    <label class="toggle" title="Puts that expire more than 45 days from now."><input type="checkbox" id="hideFarDteToggle" checked onchange="renderTable()"> over 45 days <span class="n" data-count="hideFarDteToggle"></span></label>
+    <label class="toggle" title="Delta above 0.30: roughly a 30%+ chance you end up buying the shares."><input type="checkbox" id="hideRiskyDeltaToggle" checked onchange="renderTable()"> over 30% chance of buying <span class="n" data-count="hideRiskyDeltaToggle"></span></label>
+    <label class="toggle" title="Puts paying under 2.5%. Stocks with no price yet are kept."><input type="checkbox" id="hideLowRorToggle" checked onchange="renderTable()"> under 2.5% <span class="n" data-count="hideLowRorToggle"></span></label>
+    <label class="toggle" title="Stocks checked but no put matched. Often a thin listing on Yahoo's free data, not a bad stock."><input type="checkbox" id="hideUnknownToggle" onchange="renderTable()"> no put found <span class="n" data-count="hideUnknownToggle"></span></label>
+    <label class="toggle" title="A stricter trend check: price above its 50/100/200-day averages and higher than 12 or 18 months ago."><input type="checkbox" id="hideNonUptrendToggle" onchange="renderTable()"> no 12-18 month trend <span class="n" data-count="hideNonUptrendToggle"></span></label>
     <details class="columns">
-      <summary>Show or hide columns</summary>
+      <summary>Columns</summary>
       <div class="controls" id="columnToggles">
         <label class="toggle"><input type="checkbox" data-col="change_pct"> Change today</label>
         <label class="toggle"><input type="checkbox" data-col="sector"> Sector</label>
@@ -906,10 +874,10 @@ INDEX_HTML = """<!doctype html>
       </div>
     </details>
   </div>
-  <p class="legend">Best payers first. An orange earnings date means the company reports before the put expires, which can move the price a lot. Click a heading to sort (&#9660; marks the current sort); hover a heading for an explanation. &#9733; = a ticker you added (always shown, filters skipped). Return is not per year, so a longer put shows a bigger number. Easy to trade: <span class="check-n">&#10007;</span> under 10 open contracts means a fair price can be hard to get.</p>
-  <p class="legend" id="legendChecks" style="display:none;">Company checks: <span class="check-y">&#10003;</span> yes &nbsp;<span class="check-n">&#10007;</span> no &nbsp;<b>?</b> unknown.</p>
+  <p class="legend">Best return first. Orange earnings date = reports before the put ends. &#9733; = added by you. Hover a heading for details.</p>
+  <p class="legend" id="legendChecks" style="display:none;"><span class="check-y">&#10003;</span> yes &nbsp;<span class="check-n">&#10007;</span> no &nbsp;<b>?</b> unknown.</p>
 
-  <p id="scrollHint" class="hint" style="display:none; max-width:980px;">Wider than your window: scroll sideways. The stock name stays put.</p>
+  <p id="scrollHint" class="hint" style="display:none; max-width:980px;">Scroll sideways for more columns.</p>
   <div class="table-wrap">
   <table id="dataTable">
     <thead>
@@ -923,27 +891,23 @@ INDEX_HTML = """<!doctype html>
   <div id="tooltipBox"></div>
 
   <details class="advanced">
-    <summary>Advanced: create or delete saved lists</summary>
+    <summary>Saved lists</summary>
     <div class="controls">
-      <button id="createUniverseBtn" onclick="createNewUniverse()">Create a new saved list (takes about 3 minutes)</button>
-    </div>
-    <p class="hint">Scans the whole Russell 3000 (about 2,600 stocks) using your current strictness level and saves the stocks that pass as a new entry under &ldquo;Saved lists&rdquo; in the Stock list dropdown. Handy as a faster starting point later. Use it sparingly: it makes thousands of requests.</p>
-    <div class="controls">
-      <button id="deleteUniverseBtn" class="danger-outline" onclick="deleteSelectedUniverse()" disabled title="Only lists you created can be deleted, not the built-in S&amp;P 500 or Russell lists.">Delete the selected saved list</button>
+      <button id="createUniverseBtn" onclick="createNewUniverse()" title="Scans the whole Russell 3000 at the current strictness (about 3 minutes) and saves the stocks that pass as a reusable list.">Create saved list</button>
+      <button id="deleteUniverseBtn" class="danger-outline" onclick="deleteSelectedUniverse()" disabled title="Only lists you created can be deleted.">Delete selected list</button>
     </div>
   </details>
   </div>
 
   <div id="tabSectors" style="display:none;">
   <h1>Sector Signals</h1>
-  <p class="lead">The 11 sector funds that make up the S&amp;P 500 (the &ldquo;XL&rdquo; funds) and the 10 biggest stocks in each, checked for a few well-known chart patterns on daily candles from Yahoo Finance's free end-of-day data (it can lag a day). Patterns describe what the price has done lately; they are hints, not predictions. Nothing here buys or sells anything.</p>
+  <p class="lead">Chart patterns on the 11 S&amp;P sector funds and the 10 biggest stocks in each. Hints, not predictions.</p>
 
   <section class="card scanbar">
     <div class="controls">
-      <button id="sectorScanBtn" class="primary" onclick="sectorScan()">Scan sectors</button>
-      <span id="sectorStatus">idle</span>
+      <button id="sectorScanBtn" class="primary" onclick="sectorScan()" title="Loads a year of daily prices for the __N_ETF__ funds and their __N_HOLD__ biggest stocks (about 10 seconds) and checks each for patterns.">Scan sectors</button>
+      <span id="sectorStatus"></span>
     </div>
-    <p class="hint"><b>Scan sectors:</b> loads about a year of daily prices for the __N_ETF__ funds and their __N_HOLD__ biggest stocks (about 10 seconds), then checks each one for the patterns below. The list of each fund's biggest holdings is refreshed weekly.</p>
   </section>
 
   <div class="summary">
@@ -953,21 +917,20 @@ INDEX_HTML = """<!doctype html>
 
   <div class="filterbar">
     <span class="filterlabel">Show</span>
-    <label class="toggle"><input type="checkbox" id="sectorOnlySignals" checked onchange="renderSectors()"> Only stocks with a signal</label>
-    <span class="field"><label for="sectorDirection">Direction:</label>
+    <label class="toggle"><input type="checkbox" id="sectorOnlySignals" checked onchange="renderSectors()"> with a signal</label>
     <select id="sectorDirection" onchange="renderSectors()">
-      <option value="all" selected>All</option>
-      <option value="bullish">Bullish only</option>
-      <option value="bearish">Bearish only</option>
-      <option value="watch">Watch only</option>
-    </select></span>
-    <label class="toggle"><input type="checkbox" id="sectorHideForming" onchange="renderSectors()"> Hide patterns still forming</label>
-    <label class="toggle"><input type="checkbox" id="sectorShowDetails" onchange="renderSectors()"> Show the numbers under each signal</label>
+      <option value="all" selected>All directions</option>
+      <option value="bullish">Bullish</option>
+      <option value="bearish">Bearish</option>
+      <option value="watch">Watch</option>
+    </select>
+    <label class="toggle"><input type="checkbox" id="sectorHideForming" onchange="renderSectors()"> confirmed only</label>
+    <label class="toggle"><input type="checkbox" id="sectorShowDetails" onchange="renderSectors()"> show numbers</label>
   </div>
 
-  <p class="legend">Red badges lean bearish, green bullish, amber are &ldquo;watch&rdquo; signals that can go either way. <b>confirmed</b> = the pattern completed within the last 10 trading days; <b>forming</b> = the shape is there but not confirmed yet; <b>latest</b> = about the newest candle only. Hover a badge for the exact numbers. &ldquo;Lean&rdquo; adds up a row's signals: confirmed = 2, forming = 1, watch = 0, bullish minus bearish, and ignores the filters. A confirmed pattern that the price later undoes is dropped. Open the list below for what each pattern means.</p>
+  <p class="legend"><span class="badge bearish">red</span> bearish &nbsp;<span class="badge bullish">green</span> bullish &nbsp;<span class="badge watch">amber</span> watch. <b>confirmed</b> = completed in the last 10 days, <b>forming</b> = not yet. Hover a badge for numbers.</p>
   <details class="glossary">
-    <summary>What the signals mean</summary>
+    <summary>Glossary</summary>
     <dl>
       <dt><span class="badge bearish">Double top</span></dt><dd>The price hit about the same high twice with a dip between, then fell below that dip. Often marks the end of a rise. <i>Bearish.</i></dd>
       <dt><span class="badge bullish">Double bottom</span></dt><dd>The mirror image: two similar lows, then a close above the bump between them. Often marks the end of a fall. <i>Bullish.</i></dd>
@@ -1569,8 +1532,8 @@ function renderTable() {
     const singular = t => t.replace(/^puts /, "put ").replace(/^stocks /, "stock ");
     const parts = (window.__hideBreakdown || []).filter(x => x[1] > 0).map(x => `<a class="reason" data-for="${reasonTarget[x[0]] || ""}" title="Show me the choice that does this">${x[1]} ${x[1] === 1 ? singular(x[0]) : x[0]}</a>`);
     countEl.innerHTML = currentRows.length === 0 ? "" :
-      `Showing ${displayRows.length} of ${currentRows.length} stocks` + (mine ? ` (${currentRows.length - mine} passed the scan + ${mine} you added)` : "") +
-      (hidden > 0 ? `. ${hidden} hidden by your filters and strictness: ${parts.join(", ")}.` : ".");
+      `${displayRows.length} of ${currentRows.length} shown` + (mine ? ` (${mine} added by you)` : "") +
+      (hidden > 0 ? ` <span class="n">· ${hidden} hidden: ${parts.join(", ")}</span>` : "");
     const sc = document.getElementById("styleCount");
     if (sc) {
       const st = (window.__hideBreakdown || []).find(x => x[0] === "by the strictness level");
@@ -1590,7 +1553,8 @@ function renderTable() {
     const fn = countFor[el.getAttribute("data-count")];
     const n = fn ? ownRows.filter(fn).length : 0;
     const forcedHit = fn ? currentRows.filter(r => r.forced && !r.error && fn(r)).length : 0;
-    el.textContent = currentRows.length ? (n === 0 ? "(nothing to hide now)" : `(would hide ${n}${forcedHit ? `; your ${forcedHit} stay` : ""})`) : "";
+    el.textContent = currentRows.length && n > 0 ? `${n}` : "";
+    el.title = forcedHit ? `Your ${forcedHit} added ticker${forcedHit === 1 ? "" : "s"} stay shown` : "";
     const lab = el.closest("label");
     if (lab) lab.classList.toggle("dim", currentRows.length > 0 && n === 0);
   });
@@ -1692,12 +1656,12 @@ let lastGeneratedAt = null;
 function updateAsOf(generatedAt) {
   if (generatedAt !== undefined) lastGeneratedAt = generatedAt;
   const el = document.getElementById("asOf");
-  const fmt = iso => { const d = new Date(iso); return `${d.toLocaleDateString()}, ${d.toLocaleTimeString()}`; };
+  const fmt = iso => { const d = new Date(iso); return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`; };
   const quoteTimes = currentRows.map(r => r.quote_as_of).filter(Boolean).sort();
   const latest = quoteTimes.length ? fmt(quoteTimes[quoteTimes.length - 1]) : null;
   el.textContent = latest
-    ? (marketOpenNow() ? `Put prices as of ${latest}.` : `Last known put prices, from ${latest} (the market is closed now).`)
-    : (currentRows.length ? "Put prices: loading." : "Put prices: \u2014");
+    ? `Put prices from ${latest}${marketOpenNow() ? "" : " \u00b7 market closed"}`
+    : (currentRows.length ? "Put prices loading" : "");
 }
 
 // Maps the backend's internal mode string ("general"/"options"/"curated")
@@ -1727,21 +1691,21 @@ async function whereIs() {
       return;
     }
     const styleHid = styleFilteredRows([row]).length === 0;
-    const toggles = [["hideFarDteToggle", "Hide puts lasting over 45 days"], ["hideRiskyDeltaToggle", "Hide over a 30% chance of buying"], ["hideLowRorToggle", "Hide paying under 2.5%"], ["hideUnknownToggle", "Hide no put found"], ["hideNonUptrendToggle", "Hide without a 12-18 month trend"]];
+    const toggles = [["hideFarDteToggle", "over 45 days"], ["hideRiskyDeltaToggle", "over 30% chance of buying"], ["hideLowRorToggle", "under 2.5%"], ["hideUnknownToggle", "no put found"], ["hideNonUptrendToggle", "no 12-18 month trend"]];
     const countFor = window.__countFor || {};
     const hitBy = toggles.filter(([id]) => { const cb = document.getElementById(id); return cb && cb.checked && countFor[id] && countFor[id](row); }).map(x => x[1]);
-    if (styleHid) { out.textContent = `${sym} is hidden by the strictness level (it barely moves). Choose Low strictness to see it, or type it in "Or look up just these tickers".`; return; }
-    out.textContent = hitBy.length ? `${sym} is hidden by the filter "${hitBy[0]}". Untick that filter to see it.` : `${sym} is loaded but hidden. Try unticking the filters.`;
+    if (styleHid) { out.textContent = `${sym} hidden by strictness (barely moves). Pick Low, or add it in the tickers box.`; return; }
+    out.textContent = hitBy.length ? `${sym} hidden by "${hitBy[0]}". Untick it to see it.` : `${sym} loaded but hidden. Untick the filters.`;
     return;
   }
   out.textContent = "Checking...";
   try {
     const res = await fetch(`/api/why?symbol=${encodeURIComponent(sym)}`);
     const d = await res.json();
-    if (d.status === "removed") out.textContent = `${sym} was removed by the scan because ${d.reason}. To see it anyway, type it in "Or look up just these tickers" above.`;
-    else if (d.status === "not_in_list") out.textContent = `${sym} is not in the stock list that was scanned. Pick a bigger list, or type it in "Or look up just these tickers" above.`;
+    if (d.status === "removed") out.textContent = `${sym} dropped by the scan: ${d.reason}. Add it in the tickers box to see it anyway.`;
+    else if (d.status === "not_in_list") out.textContent = `${sym} not in the scanned list. Add it in the tickers box.`;
     else if (d.status === "in_table") out.textContent = `${sym} is in the table.`;
-    else out.textContent = `${sym} was not part of the last scan. Type it in "Or look up just these tickers" above to check it.`;
+    else out.textContent = `${sym} not scanned yet. Add it in the tickers box.`;
   } catch (e) {
     out.textContent = "Could not check right now.";
   }
@@ -1764,10 +1728,10 @@ function setFetchStatus(text) {
 
 let shownCount = 0;
 function fetchLabel() {
-  if (!shownCount) return "Update put prices";
+  if (!shownCount) return "Update prices";
   const secs = Math.round(shownCount * 1.5);
-  const est = secs < 50 ? `about ${Math.max(5, Math.round(secs / 5) * 5)} sec` : `about ${Math.max(1, Math.round(secs / 60))} min`;
-  return `Update put prices (${shownCount} stocks, ${est})`;
+  const est = secs < 50 ? `~${Math.max(5, Math.round(secs / 5) * 5)} sec` : `~${Math.max(1, Math.round(secs / 60))} min`;
+  return `Update prices · ${est}`;
 }
 
 function updateListLabel() {
@@ -1780,12 +1744,11 @@ function updateListLabel() {
   } else {
     const sel = document.getElementById("universeSelect");
     const opt = Array.from(sel.options).find(o => o.value === s.universe);
-    name = opt ? opt.textContent.split(" \u2014 ")[0] : "the chosen list";
-    if (name.startsWith("Saved list")) name = name.replace(/ \(.*$/, "");
-    if (s.requested_limit) name += ` (first ${s.requested_limit} only)`;
+    name = opt ? opt.textContent.split(" \u00b7 ")[0] : "Chosen list";
+    if (s.requested_limit) name += ` (first ${s.requested_limit})`;
   }
   const d = new Date(s.generated_at);
-  el.textContent = `Results from: ${name}, scanned ${d.toLocaleDateString()} ${d.toLocaleTimeString()}.`;
+  el.textContent = `${name} \u00b7 scanned ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`;
 }
 
 async function pollStatus() {
@@ -1847,7 +1810,8 @@ async function pollStatus() {
     }
     if (s.status === "cancelled") {
       const source = s.custom_symbols_count ? `your list of ${s.custom_symbols_count}` : `${s.total} stocks`;
-      statusEl.textContent = `Stopped at ${s.progress} of ${s.total} (you cancelled it, or Yahoo Finance briefly limited the requests, so wait a few minutes before scanning again). ${s.row_count} stocks are shown.`;
+      statusEl.textContent = `Stopped at ${s.progress} of ${s.total}. ${s.row_count} shown.`;
+      statusEl.title = "You cancelled, or Yahoo Finance briefly limited requests. Wait a few minutes before scanning again.";
       await refreshUniverseDropdown();
       await loadData();
       return;
@@ -1869,7 +1833,7 @@ async function pollStatus() {
       const fundNote = s.removed_failed_fundamentals ? `, ${s.removed_failed_fundamentals} with weak finances` : "";
       statusEl.textContent = s.custom_symbols_count
         ? `Done: ${s.row_count} of your ${s.custom_symbols_count} tickers loaded.`
-        : `Done: checked ${s.base_total || s.total} stocks and kept ${s.row_count - (s.forced_count || 0)}. Removed by the scan: ${s.removed_no_uptrend} whose price is not rising${lowVolNote}${fundNote}.`;
+        : `Kept ${s.row_count - (s.forced_count || 0)} of ${s.base_total || s.total}. Dropped: ${s.removed_no_uptrend} not rising${lowVolNote}${fundNote}.`;
       syncModeControlsFrom(s.mode);
       if (!s.custom_symbols_count) {
         syncLimitSelect(s.requested_limit);
@@ -1886,7 +1850,7 @@ async function pollStatus() {
     } else if (s.status === "error") {
       statusEl.textContent = `error: ${s.error}`;
     } else {
-      statusEl.textContent = "idle";
+      statusEl.textContent = "";
     }
   }
 }
@@ -1909,7 +1873,7 @@ async function refreshUniverseDropdown() {
       opt.value = `generated:${u.id}`;
       const d = new Date(u.generated_at * 1000);
       const lvl = {general: "Low", options: "Medium", curated: "High"}[u.generated_under_mode] || "";
-      opt.textContent = `Saved list (${u.size} stocks, made ${d.toLocaleDateString()}${lvl ? " under " + lvl + " strictness" : ""})`;
+      opt.textContent = `Saved list · ${u.size} stocks · ${d.toLocaleDateString()}${lvl ? " · " + lvl : ""}`;
       group.appendChild(opt);
     });
     if (Array.from(uSel.options).some(o => o.value === previousValue)) {
