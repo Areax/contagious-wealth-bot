@@ -721,12 +721,19 @@ INDEX_HTML = """<!doctype html>
   .step.alt { background: #888; width: auto; padding: 0 8px; border-radius: 11px; }
   .radios { display: flex; flex-direction: column; gap: 4px; }
   .n { color: var(--muted); font-size: 12px; font-weight: 400; }
+  .filterbar .n:not(:empty) { display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 999px; background: rgba(127,127,127,0.18); text-align: center; line-height: 18px; font-size: 11px; font-weight: 600; margin-left: 2px; }
+  .rowcount .n { font-size: 13px; margin-left: 6px; }
+  .help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); font-size: 11px; font-weight: 600; line-height: 1; margin-left: 6px; cursor: help; vertical-align: middle; user-select: none; }
+  .help:hover { border-color: var(--accent); color: var(--accent); }
   th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; background: var(--surface); }
   .group-row th { cursor: default; background: transparent; text-align: center; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom: 1px solid var(--line); position: static; }
   .group-row th:hover { background: transparent; }
-  tr.divider td { text-align: left; background: #eef2ff; color: #1e3a8a; font-weight: 600; font-size: 12px; padding: 6px 10px; white-space: normal; }
+  tr.divider td { text-align: left; background: transparent; color: var(--muted); font-weight: 500; font-size: 12px; padding: 10px 4px 4px; white-space: normal; }
+  .refresh-option-btn { opacity: 0; }
+  tr:hover .refresh-option-btn, .refresh-option-btn:focus { opacity: 1; }
+  .ownrow button.secondary { background: transparent; color: inherit; border: 1px solid var(--line); font-weight: 500; }
+  .ownrow button.secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   td[colspan="6"] { white-space: normal; }
-  @media (prefers-color-scheme: dark) { tr.divider td { background: #1f2a44; color: #bcd0ff; } }
   .mine { font-size: 11px; color: #2563eb; }
   ul.key { margin: 8px 0 0 0; padding-left: 18px; }
   ul.key li { margin-bottom: 2px; }
@@ -816,7 +823,7 @@ INDEX_HTML = """<!doctype html>
         <option value="add" selected>Add to table</option>
         <option value="replace">Replace table</option>
       </select>
-      <button id="customRunBtn" onclick="startCustomRun()">Run</button>
+      <button id="customRunBtn" class="secondary" onclick="startCustomRun()">Add tickers</button>
       <span id="customStatus" class="statusline"></span>
     </div>
     <details class="more">
@@ -834,23 +841,23 @@ INDEX_HTML = """<!doctype html>
   </section>
 
   <div class="summary">
-    <p id="listLabel" class="listlabel"></p>
     <p id="rowCount" class="rowcount"></p>
-    <p class="whererow"><input id="whereInput" placeholder="Find a ticker" size="12" onkeydown="if (event.key === 'Enter') whereIs()"> <button class="small" onclick="whereIs()">Find</button> <span id="whereAnswer" class="hint inline"></span></p>
+    <p id="priceNote" class="cue" style="display:none;"></p>
     <p class="asof-line">
-      <span id="asOf"></span>
+      <span id="listLabel"></span>
+      <span id="asOf" style="display:none"></span>
       <button id="fetchAllBtn" class="small" onclick="fetchAllOptions()">Update prices</button>
       <button id="cancelFetchBtn" class="small stop" onclick="cancelRun()" style="display:none;">Stop</button>
-      <label class="toggle" title="Ticked: every shown stock is looked up again, even ones that already have a price. Unticked: only stocks still missing a price."><input type="checkbox" id="forceRefreshToggle" checked> include priced</label>
+      <label class="toggle"><input type="checkbox" id="forceRefreshToggle"> re-check priced stocks too</label><span class="help" data-help="Unticked: Update prices only looks up stocks still missing a put price, which is fast. Ticked: every stock shown is looked up again, even ones that already have a price. Prices move during the day, so tick this for the newest numbers.">?</span>
     </p>
   </div>
 
 
   <div class="filterbar">
-    <span class="filterlabel">Hide</span>
-    <label class="toggle" title="Puts that expire more than 45 days from now."><input type="checkbox" id="hideFarDteToggle" checked onchange="renderTable()"> over 45 days <span class="n" data-count="hideFarDteToggle"></span></label>
-    <label class="toggle" title="Delta above 0.30: roughly a 30%+ chance you end up buying the shares."><input type="checkbox" id="hideRiskyDeltaToggle" checked onchange="renderTable()"> over 30% chance of buying <span class="n" data-count="hideRiskyDeltaToggle"></span></label>
-    <label class="toggle" title="Puts paying under 2.5%. Stocks with no price yet are kept."><input type="checkbox" id="hideLowRorToggle" checked onchange="renderTable()"> under 2.5% <span class="n" data-count="hideLowRorToggle"></span></label>
+    <span class="filterlabel">Hide</span><span class="help" data-help="Filters only change what you see in the table. They never change what the scan found. The number next to each filter is how many stocks it hides. Tickers you added yourself are always shown.">?</span>
+    <label class="toggle" title="Puts that expire more than 45 days from now."><input type="checkbox" id="hideFarDteToggle" checked onchange="renderTable()"> puts over 45 days <span class="n" data-count="hideFarDteToggle"></span></label>
+    <label class="toggle" title="Delta above 0.30: roughly a 30%+ chance you end up buying the shares."><input type="checkbox" id="hideRiskyDeltaToggle" checked onchange="renderTable()"> chance of buying over 30% <span class="n" data-count="hideRiskyDeltaToggle"></span></label>
+    <label class="toggle" title="Puts whose return is under 2.5%. Stocks with no price yet are kept."><input type="checkbox" id="hideLowRorToggle" checked onchange="renderTable()"> return under 2.5% <span class="n" data-count="hideLowRorToggle"></span></label>
     <label class="toggle" title="Stocks checked but no put matched. Often a thin listing on Yahoo's free data, not a bad stock."><input type="checkbox" id="hideUnknownToggle" onchange="renderTable()"> no put found <span class="n" data-count="hideUnknownToggle"></span></label>
     <label class="toggle" title="A stricter trend check: price above its 50/100/200-day averages and higher than 12 or 18 months ago."><input type="checkbox" id="hideNonUptrendToggle" onchange="renderTable()"> no 12-18 month trend <span class="n" data-count="hideNonUptrendToggle"></span></label>
     <details class="columns">
@@ -1040,8 +1047,8 @@ const COLUMN_TOOLTIPS = {
   dte: "How many days until the put expires. After that the promise ends.",
   delta: "Roughly the chance you end up having to buy the shares, estimated from the option's own price. The tool aims for about 20% and only shows 20% to 30%. (Technical name: delta.)",
   premium: "What you are paid up front for one contract (100 shares), at the midpoint of the bid and ask prices.",
-  ror: "What you collect, divided by the cash you set aside (strike x 100, minus what you collect), over this put's own life. Not per year, so a longer put shows a bigger number. The table is sorted by this. (Same formula thinkorswim calls RoR.)",
-  oi: "How many of this exact contract exist (open interest). Under about 10 means few people trade it, so getting a fair price can be hard.",
+  ror: "Return per put, not per year: what you collect, divided by the cash you set aside (strike x 100, minus what you collect). A longer put shows a bigger number. The table is sorted by this. (Same formula thinkorswim calls RoR.)",
+  oi: "Easy to trade? How many of this exact contract exist (open interest). Under about 10 means few people trade it, so getting a fair price can be hard.",
   next_earnings: "The company's next earnings report date. Big news can move the price sharply, so many people avoid puts that last past it.",
   beta: "How much the stock swings compared with the overall market. 1.0 moves with the market; 2.0 swings about twice as much.",
   realized_vol: "How much the price has been moving lately, as a yearly percentage. More movement usually means you are paid more, and risk more.",
@@ -1102,6 +1109,12 @@ function showTooltip(anchorEl, text) {
 function hideTooltip() {
   document.getElementById("tooltipBox").style.display = "none";
 }
+
+// "?" help icons: any element with data-help shows its text in the same
+// clamped tooltip box the column headings use. Hover or focus.
+document.addEventListener("mouseover", e => { const h = e.target.closest && e.target.closest("[data-help]"); if (h) showTooltip(h, h.getAttribute("data-help")); });
+document.addEventListener("mouseout", e => { if (e.target.closest && e.target.closest("[data-help]")) hideTooltip(); });
+document.addEventListener("click", e => { const h = e.target.closest && e.target.closest("[data-help]"); if (h) { e.preventDefault(); showTooltip(h, h.getAttribute("data-help")); } });
 
 function syncLimitSelect(requestedLimit) {
   // Keeps the dropdown honest about what was ACTUALLY last scanned — it
@@ -1180,7 +1193,7 @@ function renderOptionCells(r) {
     // next time. No `force` needed — the backend's cache-skip guard only
     // ever triggers when a real put already exists.
     if (r.options_note === "no_live_quotes" || (!marketOpenNow() && r.options_note !== "no_chain")) {
-      return `<td colspan="6" class="check-u" title="Yahoo shows no live put prices while the US market is closed. Press Update put prices during market hours (9:30am to 4pm Eastern, Monday to Friday).">no live price (market closed)</td>`;
+      return `<td colspan="6" class="check-u" title="Yahoo shows no live put prices while the US market is closed. Press Update prices during market hours (9:30am to 4pm Eastern, Monday to Friday).">no live price (market closed)</td>`;
     }
     if (r.options_note === "no_chain") {
       return `<td colspan="6" class="check-u" title="Yahoo lists no put contracts for this stock in the 30 to 90 day window.">no puts listed</td>`;
@@ -1321,7 +1334,7 @@ async function fetchAllOptions(forceOverride) {
   updateCancelButtonVisibility();
   for (let i = 0; i < targets.length; i++) {
     if (optionsFetchCancelled) {
-      setFetchStatus(`Stopped: put prices loaded for ${i} of ${targets.length}. Press Update put prices to continue.`);
+      setFetchStatus(`Stopped after ${i} of ${targets.length}. Press Update prices to continue.`);
       clearBusy(btn, `Cancelled: got ${i} of ${targets.length} prices`);
       setTimeout(() => clearBusy(btn), 2500);
       fetchingAllOptions = false;
@@ -1335,7 +1348,7 @@ async function fetchAllOptions(forceOverride) {
   }
   const got = targets.filter(sym => { const r = currentRows.find(x => x.symbol === sym); return r && r.put; }).length;
   const closedNote = (got < targets.length && !marketOpenNow()) ? " (the market is closed, so most have none right now)" : "";
-  setFetchStatus(`Checked ${targets.length} stock${targets.length === 1 ? "" : "s"}: ${got} got a put price${closedNote}. All done.`);
+  setFetchStatus(`✓ Prices updated: ${got} of ${targets.length} found${closedNote}.`);
   clearBusy(btn, fetchLabel());
   fetchingAllOptions = false;
   updateCancelButtonVisibility();
@@ -1344,7 +1357,7 @@ async function fetchAllOptions(forceOverride) {
 // Plain-English column headings (the technical term stays in the tooltip).
 const HEADER_LABELS = {
   symbol: "Stock", sector: "Sector", spot: "Price ($)", change_pct: "Change today",
-  strike: "Buy at\\n(strike, $)", dte: "Days\\nleft", delta: "Chance of\\nbuying", premium: "You collect\\n($ / 100 shares)", ror: "Return\\n(not per year)", oi: "Easy to trade?\\n(open contracts)",
+  strike: "Buy at ($)", dte: "Days\\nleft", delta: "Chance of\\nbuying", premium: "You collect\\n($ / 100 sh)", ror: "Return", oi: "Open\\ncontracts",
   check_pe_ok: "Price vs profit (P/E)", check_fcf_positive: "Makes cash?", check_eps_beat: "Beat earnings?",
   check_debt_to_equity: "Debt OK?", check_roe: "Efficient? (ROE)", check_rev_growth: "Sales growing?",
   check_uptrend_legacy: "12-18 month trend?", check_csp_trigger: "Dip lately?",
@@ -1528,12 +1541,37 @@ function renderTable() {
   if (countEl) {
     const hidden = currentRows.length - displayRows.length;
     const mine = currentRows.filter(r => r.forced).length;
-    const reasonTarget = {"puts lasting over 45 days": "hideFarDteToggle", "puts with over a 30% chance of buying": "hideRiskyDeltaToggle", "puts paying under 2.5%": "hideLowRorToggle", "stocks with no put found": "hideUnknownToggle", "without a 12-18 month trend": "hideNonUptrendToggle", "by the strictness level": "modeSelect"};
     const singular = t => t.replace(/^puts /, "put ").replace(/^stocks /, "stock ");
-    const parts = (window.__hideBreakdown || []).filter(x => x[1] > 0).map(x => `<a class="reason" data-for="${reasonTarget[x[0]] || ""}" title="Show me the choice that does this">${x[1]} ${x[1] === 1 ? singular(x[0]) : x[0]}</a>`);
-    countEl.innerHTML = currentRows.length === 0 ? "" :
-      `${displayRows.length} of ${currentRows.length} shown` + (mine ? ` (${mine} added by you)` : "") +
-      (hidden > 0 ? ` <span class="n">· ${hidden} hidden: ${parts.join(", ")}</span>` : "");
+    const parts = (window.__hideBreakdown || []).filter(x => x[1] > 0).map(x => `${x[1]} ${x[1] === 1 ? singular(x[0]) : x[0]}`);
+    const help = `The last scan kept ${currentRows.length} stock${currentRows.length === 1 ? "" : "s"}` + (mine ? ` (${mine} added by you)` : "") + `. ` +
+      (hidden > 0 ? `Your filters and strictness level hide ${hidden}: ${parts.join("; ")}. Untick a filter or lower the strictness to show them.` : `Nothing is hidden by your filters.`);
+    const st = window.__lastStatusObj || {};
+    const scanned = st.base_total || st.total || 0;
+    const kept = currentRows.length - mine;
+    const found = st.custom_symbols_count ? `${kept} stocks` : `${kept} rising stock${kept === 1 ? "" : "s"}${scanned > kept ? ` <span class="n">of ${scanned} scanned</span>` : ""}`;
+    const detail = `${found}` + (mine ? ` <span class="n">+ ${mine} yours</span>` : "") +
+      ` <span class="n">· showing ${displayRows.length}</span>` + (hidden > 0 ? ` <span class="n">· ${hidden} hidden by filters</span>` : "");
+    countEl.innerHTML = currentRows.length === 0 ? "" : `${detail} <span class="help" data-help="${esc(help)}">?</span>`;
+    // Only-priced-row-is-hidden note: the table is sorted by return, so if
+    // every visible row lacks a put while a hidden one has one, say so.
+    const noteEl = document.getElementById("priceNote");
+    if (noteEl) {
+      const shownWithPut = displayRows.filter(r => r.put).length;
+      const hiddenWithPut = currentRows.filter(r => r.put && !displayRows.includes(r));
+      if (shownWithPut === 0 && hiddenWithPut.length > 0) {
+        const cf = window.__countFor || {};
+        const ids = ["hideFarDteToggle", "hideRiskyDeltaToggle", "hideLowRorToggle", "hideNonUptrendToggle"];
+        const names = {hideFarDteToggle: "puts over 45 days", hideRiskyDeltaToggle: "chance of buying over 30%", hideLowRorToggle: "return under 2.5%", hideNonUptrendToggle: "no 12-18 month trend"};
+        const culprit = ids.find(id => document.getElementById(id)?.checked && cf[id] && hiddenWithPut.some(cf[id]));
+        const n = hiddenWithPut.length;
+        noteEl.innerHTML = culprit
+          ? `${n} stock${n === 1 ? " has" : "s have"} a put price but ${n === 1 ? "is" : "are"} hidden by “${names[culprit]}”. <a class="reason" onclick="document.getElementById('${culprit}').checked = false; renderTable();">Show ${n === 1 ? "it" : "them"}</a>`
+          : `${n} stock${n === 1 ? " has" : "s have"} a put price but ${n === 1 ? "is" : "are"} hidden by the strictness level.`;
+        noteEl.style.display = "";
+      } else {
+        noteEl.style.display = "none";
+      }
+    }
     const sc = document.getElementById("styleCount");
     if (sc) {
       const st = (window.__hideBreakdown || []).find(x => x[0] === "by the strictness level");
@@ -1553,10 +1591,9 @@ function renderTable() {
     const fn = countFor[el.getAttribute("data-count")];
     const n = fn ? ownRows.filter(fn).length : 0;
     const forcedHit = fn ? currentRows.filter(r => r.forced && !r.error && fn(r)).length : 0;
-    el.textContent = currentRows.length && n > 0 ? `${n}` : "";
+    const cb = document.getElementById(el.getAttribute("data-count"));
+    el.textContent = currentRows.length && n > 0 && cb && cb.checked ? `hides ${n}` : "";
     el.title = forcedHit ? `Your ${forcedHit} added ticker${forcedHit === 1 ? "" : "s"} stay shown` : "";
-    const lab = el.closest("label");
-    if (lab) lab.classList.toggle("dim", currentRows.length > 0 && n === 0);
   });
   shownCount = displayRows.filter(r => !r.error).length;
   const fetchBtn = document.getElementById("fetchAllBtn");
@@ -1595,11 +1632,12 @@ function renderTable() {
       const rest = noPutCount - noChain - notYet;
       const parts = [];
       if (rest > 0) parts.push((!marketOpenNow() || closedCount >= Math.max(1, rest / 2))
-        ? `${rest} ${rest === 1 ? "has" : "have"} no live put price because the US market is closed (open 9:30am to 4pm Eastern, Monday to Friday); press Update put prices during market hours`
+        ? `${rest} ${rest === 1 ? "has" : "have"} no live put price because the US market is closed (open 9:30am to 4pm Eastern, Monday to Friday); press Update prices during market hours`
         : `${rest} had no put in the 20% to 30% chance range (often a thin listing on Yahoo's free data)`);
       if (noChain > 0) parts.push(`${noChain} ${noChain === 1 ? "has" : "have"} no puts listed at all`);
       if (notYet > 0) parts.push(`${notYet} ${notYet === 1 ? "is" : "are"} not looked up yet`);
-      dv.innerHTML = `<td colspan="${COLUMNS.length}">${noPutCount} stock${noPutCount === 1 ? "" : "s"} below without a put: ${parts.join("; ")}.</td>`;
+      const short = (rest > 0 && (!marketOpenNow() || closedCount >= Math.max(1, rest / 2))) ? "no live price while the market is closed" : "no put price";
+      dv.innerHTML = `<td colspan="${COLUMNS.length}">${noPutCount} below with ${short} <span class="help" data-help="${esc(`${noPutCount} stock${noPutCount === 1 ? "" : "s"} below without a put: ${parts.join("; ")}.`)}">?</span></td>`;
       tbody.appendChild(dv);
     }
     const tr = document.createElement("tr");
@@ -1662,6 +1700,7 @@ function updateAsOf(generatedAt) {
   el.textContent = latest
     ? `Put prices from ${latest}${marketOpenNow() ? "" : " \u00b7 market closed"}`
     : (currentRows.length ? "Put prices loading" : "");
+  updateListLabel();
 }
 
 // Maps the backend's internal mode string ("general"/"options"/"curated")
@@ -1747,8 +1786,14 @@ function updateListLabel() {
     name = opt ? opt.textContent.split(" \u00b7 ")[0] : "Chosen list";
     if (s.requested_limit) name += ` (first ${s.requested_limit})`;
   }
-  const d = new Date(s.generated_at);
-  el.textContent = `${name} \u00b7 scanned ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`;
+  const fmt = x => { const d = new Date(x); return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`; };
+  const quoteTimes = currentRows.map(r => r.quote_as_of).filter(Boolean).sort();
+  const priceAt = quoteTimes.length ? fmt(quoteTimes[quoteTimes.length - 1]) : null;
+  const open = marketOpenNow();
+  const help = `Stock list: ${name}, scanned ${fmt(s.generated_at)}. ` +
+    (priceAt ? `Put prices last fetched ${priceAt}. ` : "Put prices not fetched yet. ") +
+    (open ? "The US market is open, so prices change as you refresh." : "The US market is closed (open 9:30am to 4pm Eastern, Monday to Friday), so these are the last known prices.");
+  el.innerHTML = `${esc(name)} \u00b7 updated ${esc(priceAt || fmt(s.generated_at))}${open ? "" : " \u00b7 market closed"} <span class="help" data-help="${esc(help)}">?</span>`;
 }
 
 async function pollStatus() {
@@ -1833,7 +1878,8 @@ async function pollStatus() {
       const fundNote = s.removed_failed_fundamentals ? `, ${s.removed_failed_fundamentals} with weak finances` : "";
       statusEl.textContent = s.custom_symbols_count
         ? `Done: ${s.row_count} of your ${s.custom_symbols_count} tickers loaded.`
-        : `Kept ${s.row_count - (s.forced_count || 0)} of ${s.base_total || s.total}. Dropped: ${s.removed_no_uptrend} not rising${lowVolNote}${fundNote}.`;
+        : `✓ Scan done`;
+      statusEl.title = `Checked ${s.base_total || s.total} stocks. Dropped ${s.removed_no_uptrend} not rising${lowVolNote}${fundNote}.`;
       syncModeControlsFrom(s.mode);
       if (!s.custom_symbols_count) {
         syncLimitSelect(s.requested_limit);
@@ -1983,7 +2029,7 @@ document.addEventListener("click", ev => {
 function updateCustomRunLabel() {
   const btn = document.getElementById("customRunBtn");
   const add = getCustomMode() === "add";
-  btn.textContent = "Run";
+  btn.textContent = add ? "Add tickers" : "Replace table";
   btn.classList.toggle("warn", !add);
   delete btn.dataset.origText;  // setBusy/clearBusy remember the label; force it to re-read the new one
 }
