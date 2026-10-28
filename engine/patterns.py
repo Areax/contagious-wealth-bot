@@ -6,9 +6,12 @@ below, so a reader can see exactly why a signal fired and tune it.
 What each detector means (plain English first, then the rule):
 
 - Double top (bearish): the price hit about the same high twice, with a dip
-  between, and then fell below that dip. Rule: two swing highs within
-  DT_TOP_TOL of each other, DT_MIN_SEP..DT_MAX_SEP bars apart, the lowest low
-  between them at least DT_MIN_DEPTH below the lower top. "Confirmed" once a
+  between, and then fell below that dip. Rule: any two swing highs within
+  DT_TOP_TOL of each other, DT_MIN_SEP..DT_MAX_SEP bars apart (a small bounce
+  inside the dip is allowed), the lowest low between them at least
+  DT_MIN_DEPTH below the lower top, and nothing higher in the CONTEXT_BARS
+  before the first top or between the two (a reversal pattern sits at the
+  top of the move). "Confirmed" once a
   close drops below that low (the neckline) within as many bars as separated
   the two tops; "forming" while the window is still open and no close has
   gone above the tops. A close above the tops voids the pattern; a window
@@ -67,6 +70,8 @@ DT_TOP_TOL = 0.03      # double top/bottom: the two extremes within 3% of each o
 DT_MIN_DEPTH = 0.04    # the dip/bump between them at least 4% away from the extremes
 DT_MIN_SEP = 10        # bars between the two extremes
 DT_MAX_SEP = 80
+
+CONTEXT_BARS = 40       # a top/bottom pattern must be the extreme of the bars since this far before its first pivot (it reverses a trend)
 
 HS_SHOULDER_TOL = 0.05  # shoulders within 5% of each other
 HS_HEAD_MIN = 0.02      # head at least 2% beyond the taller shoulder
@@ -157,13 +162,21 @@ def detect_double(df: pd.DataFrame, highs: list[int], lows: list[int]) -> list[S
 
     def scan(pivs: list[int], is_top: bool) -> Signal | None:
         best = None
-        for a in range(len(pivs) - 1):
-            i, j = pivs[a], pivs[a + 1]
+        # Every pair of swing points in range, not just neighbours: a small
+        # bounce inside the dip adds an extra pivot but does not undo the
+        # pattern. What does undo it is a peak between the two tops that
+        # is higher than both (mirror for bottoms).
+        pairs = [(pivs[a], pivs[b]) for a in range(len(pivs)) for b in range(a + 1, len(pivs))
+                 if DT_MIN_SEP <= pivs[b] - pivs[a] <= DT_MAX_SEP]
+        pairs.sort(key=lambda ij: (ij[1], ij[0]))  # later patterns win ties
+        for i, j in pairs:
             sep = j - i
-            if sep < DT_MIN_SEP or sep > DT_MAX_SEP:
-                continue
             p1, p2 = (H[i], H[j]) if is_top else (L[i], L[j])
             if abs(p1 - p2) / max(p1, p2) > DT_TOP_TOL:
+                continue
+            if is_top and H[max(0, i - CONTEXT_BARS):j + 1].max() > max(p1, p2):
+                continue  # something higher nearby: these are not the tops of the move
+            if not is_top and L[max(0, i - CONTEXT_BARS):j + 1].min() < min(p1, p2):
                 continue
             if is_top:
                 neck = L[i:j + 1].min()
@@ -212,11 +225,17 @@ def detect_head_shoulders(df: pd.DataFrame, highs: list[int], lows: list[int]) -
 
     def scan(pivs: list[int], regular: bool) -> Signal | None:
         best = None
-        for a in range(len(pivs) - 2):
-            s1, head, s2 = pivs[a], pivs[a + 1], pivs[a + 2]
-            if s2 - s1 > DT_MAX_SEP * 2:
-                continue
+        triples = [(pivs[a], pivs[b], pivs[c]) for a in range(len(pivs)) for b in range(a + 1, len(pivs))
+                   for c in range(b + 1, len(pivs)) if pivs[c] - pivs[a] <= DT_MAX_SEP * 2]
+        triples.sort(key=lambda t: (t[2], t[1], t[0]))
+        for s1, head, s2 in triples:
             v1, vh, v2 = (H[s1], H[head], H[s2]) if regular else (L[s1], L[head], L[s2])
+            # the head must be the extreme of the whole span; otherwise some
+            # other peak between the shoulders is the real head
+            if regular and H[max(0, s1 - CONTEXT_BARS):s2 + 1].max() > vh:
+                continue  # the head must be the top of the whole move, not a bump inside a bigger one
+            if not regular and L[max(0, s1 - CONTEXT_BARS):s2 + 1].min() < vh:
+                continue
             if regular:
                 if not (vh > v1 * (1 + HS_HEAD_MIN) and vh > v2 * (1 + HS_HEAD_MIN)):
                     continue
