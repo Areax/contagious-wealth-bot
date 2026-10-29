@@ -206,6 +206,7 @@ def _run_scan(
             return
         _cancel_event.clear()
         _state["status"] = "scanning"
+        _state["last_created_universe"] = None
         _state["progress"] = 0
         _state["error"] = None
         _state["append_mode"] = append
@@ -417,6 +418,7 @@ def _universe_label(universe: str) -> str:
         for u in list_universes():
             if u["id"] == uid:
                 return u["name"]
+        return "a deleted list"
     return universe
 
 
@@ -424,7 +426,12 @@ def _universe_label(universe: str) -> str:
 def api_universes_own():
     """Saves the tickers the user typed as a new 'My list'. No scan."""
     body = request.get_json(silent=True) or {}
-    symbols = [s.strip().upper() for s in re.split(r"[\s,;]+", str(body.get("symbols", ""))) if s.strip()]
+    raw = body.get("symbols", "")
+    if isinstance(raw, list):
+        raw = " ".join(str(x) for x in raw)
+    if not isinstance(raw, str) or not isinstance(body.get("name", ""), str):
+        return jsonify({"ok": False, "message": "symbols and name must be text"}), 400
+    symbols = [s.strip().upper() for s in re.split(r"[\s,;]+", raw) if s.strip() and re.fullmatch(r"[A-Za-z0-9.\-]{1,10}", s.strip())]
     if not symbols:
         return jsonify({"ok": False, "message": "type at least one ticker"}), 400
     record = save_universe(name=body.get("name") or f"My picks ({len(symbols)})", symbols=symbols, kind="own", source="typed")
@@ -460,8 +467,11 @@ def api_universes_from_scan():
 @app.route("/api/universes/<uid>", methods=["PATCH"])
 def api_universes_rename(uid):
     body = request.get_json(silent=True) or {}
-    if not rename_universe(uid, str(body.get("name", ""))):
-        return jsonify({"ok": False, "message": "not found or empty name"}), 400
+    name = body.get("name", "")
+    if not isinstance(name, str) or not name.strip():
+        return jsonify({"ok": False, "message": "name must be non-empty text"}), 400
+    if not rename_universe(uid, name):
+        return jsonify({"ok": False, "message": f"universe {uid!r} not found"}), 404
     return jsonify({"ok": True})
 
 
@@ -923,7 +933,6 @@ INDEX_HTML = """<!doctype html>
       <span id="status"></span>
     </div>
     <p id="listChangeCue" class="cue" style="display:none;">List changed. Run scan to apply.</p>
-    <p id="fetchStatus" class="statusline" style="display:none;"></p>
     <span id="universeNote" style="display:none"></span><span id="modeNote" style="display:none"></span><span id="styleCount" style="display:none"></span>
     <div class="controls ownrow">
       <textarea id="customSymbols" placeholder="Your tickers: AAPL, MSFT, KO" rows="1" title="Always shown, even where a filter would hide them. Cleared by the next scan."></textarea>
@@ -1900,40 +1909,6 @@ function syncModeControlsFrom(backendMode) {
   document.getElementById("modeSelect").value = "general";
 }
 
-async function whereIs() {
-  const out = document.getElementById("whereAnswer");
-  const sym = document.getElementById("whereInput").value.trim().toUpperCase();
-  if (!sym) { out.textContent = ""; return; }
-  const row = currentRows.find(r => r.symbol === sym);
-  if (row) {
-    if (row.error) { out.textContent = `${sym}: could not be loaded (${row.error}).`; return; }
-    const shownIdx = getDisplayRows().findIndex(r => r.symbol === sym);
-    if (shownIdx >= 0) {
-      out.textContent = `${sym} is in the table (highlighted below).`;
-      const tr = document.querySelector(`tbody tr[data-sym="${sym}"]`);
-      if (tr) { tr.scrollIntoView({behavior: "smooth", block: "center"}); tr.classList.remove("flashrow"); void tr.offsetWidth; tr.classList.add("flashrow"); }
-      return;
-    }
-    const styleHid = styleFilteredRows([row]).length === 0;
-    const toggles = [["hideFarDteToggle", "over 45 days"], ["hideRiskyDeltaToggle", "over 30% chance of buying"], ["hideLowRorToggle", "under 2.5%"], ["hideUnknownToggle", "no put found"], ["hideNonUptrendToggle", "no 12-18 month trend"]];
-    const countFor = window.__countFor || {};
-    const hitBy = toggles.filter(([id]) => { const cb = document.getElementById(id); return cb && cb.checked && countFor[id] && countFor[id](row); }).map(x => x[1]);
-    if (styleHid) { out.textContent = `${sym} hidden by strictness (barely moves). Pick Low, or add it in the tickers box.`; return; }
-    out.textContent = hitBy.length ? `${sym} hidden by "${hitBy[0]}". Untick it to see it.` : `${sym} loaded but hidden. Untick the filters.`;
-    return;
-  }
-  out.textContent = "Checking...";
-  try {
-    const res = await fetch(`/api/why?symbol=${encodeURIComponent(sym)}`);
-    const d = await res.json();
-    if (d.status === "removed") out.textContent = `${sym} dropped by the scan: ${d.reason}. Add it in the tickers box to see it anyway.`;
-    else if (d.status === "not_in_list") out.textContent = `${sym} not in the scanned list. Add it in the tickers box.`;
-    else if (d.status === "in_table") out.textContent = `${sym} is in the table.`;
-    else out.textContent = `${sym} not scanned yet. Add it in the tickers box.`;
-  } catch (e) {
-    out.textContent = "Could not check right now.";
-  }
-}
 
 // US stock market hours: 9:30am to 4:00pm Eastern, Monday to Friday (holidays ignored).
 function marketOpenNow() {
@@ -2008,11 +1983,11 @@ async function pollStatus() {
   const statusEl = document.getElementById("status");
   const btn = document.getElementById("scanBtn");
   const customBtn = document.getElementById("customRunBtn");
-  const createBtn = null;  // the Russell 3000 builder is a link inside the lists modal now; status line shows its progress
+  const createBtn = null;
   if (s.status === "scanning" || s.status === "creating_universe") {
     const creating = s.status === "creating_universe";
     statusEl.textContent = creating
-      ? `creating new universe (full Russell 3000 re-screen) — ${s.progress}/${s.total} (${s.current_symbol || ""})...`
+      ? `building list \u00b7 ${s.progress}/${s.total} (${s.current_symbol || ""})...`
       : s.append_mode
         ? ""
         : `scanning ${s.progress}/${s.total} (${s.current_symbol || ""})...`;
@@ -2153,17 +2128,6 @@ function onUniverseChange() {
   if (note) note.textContent = v.startsWith("generated:")
     ? "This saved list is a shortcut: stocks that already passed a full scan, so scanning it is quick."
     : "";
-  const uSel = document.getElementById("universeSelect");
-  const delBtn = document.getElementById("deleteUniverseBtn");
-  // Always visible, just grayed out (disabled) for universes that can't
-  // be deleted — the built-in S&P 500/Russell 2000/3000 ones — rather
-  // than disappearing, so its existence and purpose stay discoverable.
-  if (delBtn) {
-    const isGen = uSel.value.startsWith("generated:");
-    delBtn.disabled = !isGen;
-    delBtn.textContent = isGen ? `Delete "${uSel.options[uSel.selectedIndex].textContent}"` : "Delete the selected saved list";
-    delBtn.title = isGen ? "Permanently deletes this saved list. You will be asked to confirm." : "Only lists you created can be deleted, not the built-in S&P 500 or Russell lists.";
-  }
 }
 
 async function createNewUniverse() {
@@ -2180,23 +2144,12 @@ async function createNewUniverse() {
   pollStatus();
 }
 
-async function deleteSelectedUniverse() {
-  const uSel = document.getElementById("universeSelect");
-  if (!uSel.value.startsWith("generated:")) return;
-  const name = uSel.options[uSel.selectedIndex].textContent;
-  if (!confirm(`Delete "${name}"? This can't be undone from the UI.`)) return;
-  const uid = uSel.value.split(":")[1];
-  const res = await fetch(`/api/universes/${uid}`, {method: "DELETE"});
-  if (res.ok) {
-    uSel.value = "sp500";
-    await refreshUniverseDropdown();
-  }
-}
 
-function openListsModal() {
+async function openListsModal() {
   document.getElementById("listsModal").style.display = "";
   document.getElementById("ownListMsg").textContent = "";
   document.getElementById("scanListMsg").textContent = "";
+  await refreshUniverseDropdown();
   renderListsModal();
 }
 function closeListsModal() { document.getElementById("listsModal").style.display = "none"; }
@@ -2209,7 +2162,7 @@ async function renderListsModal() {
   const lvl = {general: "Low", options: "Medium", curated: "High"};
   body.innerHTML = list.map(u => {
     const d = new Date(u.generated_at * 1000).toLocaleDateString([], {month: "numeric", day: "numeric"});
-    const kind = u.kind === "own" ? "Typed by you" : `Scan of ${u.source || "an index"}${u.generated_under_mode ? " at " + lvl[u.generated_under_mode] : ""}`;
+    const kind = u.kind === "own" ? "Typed by you" : `Scan of ${esc(u.source || "an index")}${u.generated_under_mode ? " at " + lvl[u.generated_under_mode] : ""}`;
     return `<div class="listrow" data-id="${u.id}"><div class="nm">${esc(u.name)}<small>${u.size} stocks \u00b7 ${kind} \u00b7 ${d}</small></div>` +
       `<div class="act"><button onclick="renameList('${u.id}')">Rename</button><button class="del" onclick="deleteList('${u.id}')">Delete</button></div></div>`;
   }).join("");
@@ -2222,7 +2175,8 @@ async function renderListsModal() {
     if (r.ok) {
       desc.textContent = `${r.size} stocks from the last scan of ${r.source}.`;
       btn.disabled = false;
-      if (!nameEl.value) nameEl.value = r.default_name;
+      if (!nameEl.value || nameEl.value === nameEl.dataset.auto) nameEl.value = r.default_name;
+      nameEl.dataset.auto = r.default_name;
     } else {
       desc.textContent = "Run a scan first.";
       btn.disabled = true;
@@ -2557,11 +2511,11 @@ def run_dashboard(port: int = 8899, initial_limit: int | None = None):
     # on a genuinely first-ever run (no persisted config yet).
     last = _load_last_scan_config()
     if last:
-        args = (last.get("limit"), last.get("custom_symbols"), last.get("universe", "russell3000"), last.get("mode", "general"))
+        args = (last.get("limit"), last.get("custom_symbols"), last.get("universe", "sp500"), "general")  # the page always scans at Low; strictness is a Manage lists concept
     else:
         # First-ever run: a small S&P 500 scan so a fresh install finishes
         # in about a minute, not a full ~2,600-symbol Russell 3000 pull.
-        args = (initial_limit if initial_limit is not None else 50, None, "sp500", "options")
+        args = (initial_limit if initial_limit is not None else 50, None, "sp500", "general")
     t = threading.Thread(target=_run_scan, args=args, daemon=True)
     t.start()
     app.run(host="127.0.0.1", port=port, debug=False, threaded=True)

@@ -99,7 +99,7 @@ def save_universe(name: str, symbols: list[str], kind: str, source: str | None =
     uid = uuid.uuid4().hex[:10]
     record = {
         "id": uid,
-        "name": (name or "").strip() or f"Saved list {_date_str()}",
+        "name": str(name or "").strip() or f"Saved list {_date_str()}",
         "symbols": sorted({s.strip().upper() for s in symbols if s and s.strip()}),
         "kind": kind,
         "source": source,
@@ -130,13 +130,15 @@ def list_universes() -> list[dict]:
     for f in STORE_DIR.glob("*.json"):
         try:
             data = json.loads(f.read_text())
-        except (json.JSONDecodeError, OSError):
+            if not isinstance(data.get("symbols"), list) or "id" not in data or "name" not in data:
+                continue
+        except (json.JSONDecodeError, OSError, AttributeError):
             continue
         records.append({
             "id": data["id"],
             "name": data["name"],
             "size": len(data["symbols"]),
-            "generated_at": data["generated_at"],
+            "generated_at": data.get("generated_at") or 0,
             "generated_under_mode": data.get("generated_under_mode"),
             "kind": data.get("kind", "scan"),
             "source": data.get("source", "Russell 3000"),
