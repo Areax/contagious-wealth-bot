@@ -57,23 +57,61 @@ def create_universe(mode: str, progress_cb=None, cancel_event=None) -> dict:
         cancel_event=cancel_event,
     )
     symbols = sorted(r.symbol for r in rows if r.error is None)
+    record = save_universe(
+        name=f"Rising at {MODE_LABELS.get(mode, mode)} \u00b7 from Russell 3000 \u00b7 {_date_str()}",
+        symbols=symbols, kind="scan", source="Russell 3000", mode=mode,
+        extra={
+            "source_universe_size": len(source_symbols),
+            "removed_no_uptrend": removed_uptrend,
+            "removed_low_vol": removed_vol,
+            "removed_failed_fundamentals": removed_fundamentals,
+            "errors": len(rows) - len(symbols),
+        },
+    )
+    return record
+
+
+MODE_LABELS = {"general": "Low", "options": "Medium", "curated": "High"}
+
+
+def _date_str() -> str:
+    return time.strftime("%m/%d", time.localtime()).lstrip("0").replace("/0", "/")
+
+
+def default_scan_name(source_label: str, mode: str | None) -> str:
+    lvl = MODE_LABELS.get(mode or "", "")
+    return f"Rising{' at ' + lvl if lvl else ''} \u00b7 from {source_label} \u00b7 {_date_str()}"
+
+
+def save_universe(name: str, symbols: list[str], kind: str, source: str | None = None,
+                  mode: str | None = None, extra: dict | None = None) -> dict:
+    """Persists a new saved list. kind is "own" (tickers the user typed) or
+    "scan" (the survivors of a scan). Never overwrites: every save is a new
+    record with its own id."""
     uid = uuid.uuid4().hex[:10]
-    date_str = time.strftime("%m/%d", time.localtime()).lstrip("0").replace("/0", "/")
     record = {
         "id": uid,
-        "name": f"{len(symbols)} Symbols from Russell 3000 filtered {date_str}",
-        "symbols": symbols,
+        "name": (name or "").strip() or f"Saved list {_date_str()}",
+        "symbols": sorted({s.strip().upper() for s in symbols if s and s.strip()}),
+        "kind": kind,
+        "source": source,
         "generated_at": time.time(),
         "generated_under_mode": mode,
-        "source_universe_size": len(source_symbols),
-        "removed_no_uptrend": removed_uptrend,
-        "removed_low_vol": removed_vol,
-        "removed_failed_fundamentals": removed_fundamentals,
-        "errors": len(rows) - len(symbols),
     }
+    record.update(extra or {})
     STORE_DIR.mkdir(parents=True, exist_ok=True)
     (STORE_DIR / f"{uid}.json").write_text(json.dumps(record, indent=2))
     return record
+
+
+def rename_universe(uid: str, name: str) -> bool:
+    path = STORE_DIR / f"{uid}.json"
+    if not path.exists() or not name.strip():
+        return False
+    data = json.loads(path.read_text())
+    data["name"] = name.strip()
+    path.write_text(json.dumps(data, indent=2))
+    return True
 
 
 def list_universes() -> list[dict]:
@@ -92,6 +130,8 @@ def list_universes() -> list[dict]:
             "size": len(data["symbols"]),
             "generated_at": data["generated_at"],
             "generated_under_mode": data.get("generated_under_mode"),
+            "kind": data.get("kind", "scan"),
+            "source": data.get("source", "Russell 3000"),
         })
     records.sort(key=lambda r: r["generated_at"], reverse=True)
     return records

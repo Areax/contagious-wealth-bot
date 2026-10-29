@@ -10,6 +10,7 @@ Run via: python main.py web --port 8899  (add --limit N to scan fewer than the f
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from datetime import datetime
@@ -26,9 +27,12 @@ from engine.patterns import analyze as analyze_patterns
 from data.market_data import get_price_histories_batch
 from engine.generated_universes import (
     create_universe,
+    default_scan_name,
     delete_universe,
     get_universe_symbols,
     list_universes,
+    rename_universe,
+    save_universe,
 )
 
 app = Flask(__name__)
@@ -394,6 +398,65 @@ def api_universes_create():
     return jsonify({"ok": True})
 
 
+_INDEX_LABELS = {"sp500": "S&P 500", "russell2000": "Russell 2000", "russell3000": "Russell 3000"}
+
+
+def _universe_label(universe: str) -> str:
+    if universe in _INDEX_LABELS:
+        return _INDEX_LABELS[universe]
+    if universe.startswith("generated:"):
+        uid = universe.split(":", 1)[1]
+        for u in list_universes():
+            if u["id"] == uid:
+                return u["name"]
+    return universe
+
+
+@app.route("/api/universes/own", methods=["POST"])
+def api_universes_own():
+    """Saves the tickers the user typed as a new 'My list'. No scan."""
+    body = request.get_json(silent=True) or {}
+    symbols = [s.strip().upper() for s in re.split(r"[\s,;]+", str(body.get("symbols", ""))) if s.strip()]
+    if not symbols:
+        return jsonify({"ok": False, "message": "type at least one ticker"}), 400
+    record = save_universe(name=body.get("name") or f"My picks ({len(symbols)})", symbols=symbols, kind="own", source="typed")
+    return jsonify({"ok": True, "id": record["id"], "name": record["name"], "size": len(record["symbols"])})
+
+
+@app.route("/api/universes/from_scan", methods=["GET"])
+def api_universes_from_scan_preview():
+    """What 'Save last scan as a list' would save right now."""
+    with _state_lock:
+        rows = [r for r in _state["rows"] if not r.get("error") and not r.get("forced")]
+        ok = bool(rows) and _state["generated_at"] is not None and not _state.get("custom_symbols")
+        label = _universe_label(_state["universe"]); mode = _state["mode"]
+    return jsonify({"ok": ok, "size": len(rows), "source": label, "mode": mode,
+                    "default_name": default_scan_name(label, mode)})
+
+
+@app.route("/api/universes/from_scan", methods=["POST"])
+def api_universes_from_scan():
+    """Saves the stocks that survived the last scan as a new 'Scan result' list."""
+    body = request.get_json(silent=True) or {}
+    with _state_lock:
+        rows = [r for r in _state["rows"] if not r.get("error") and not r.get("forced")]
+        label = _universe_label(_state["universe"]); mode = _state["mode"]
+        if not rows or _state["generated_at"] is None:
+            return jsonify({"ok": False, "message": "run a scan first"}), 400
+    record = save_universe(name=body.get("name") or default_scan_name(label, mode),
+                           symbols=[r["symbol"] for r in rows], kind="scan", source=label, mode=mode,
+                           extra={"source_universe_size": _state.get("base_total") or len(rows)})
+    return jsonify({"ok": True, "id": record["id"], "name": record["name"], "size": len(record["symbols"])})
+
+
+@app.route("/api/universes/<uid>", methods=["PATCH"])
+def api_universes_rename(uid):
+    body = request.get_json(silent=True) or {}
+    if not rename_universe(uid, str(body.get("name", ""))):
+        return jsonify({"ok": False, "message": "not found or empty name"}), 400
+    return jsonify({"ok": True})
+
+
 @app.route("/api/universes/<uid>", methods=["DELETE"])
 def api_universes_delete(uid):
     ok = delete_universe(uid)
@@ -723,6 +786,23 @@ INDEX_HTML = """<!doctype html>
   .n { color: var(--muted); font-size: 12px; font-weight: 400; }
   .filterbar .n:not(:empty) { display: inline-block; min-width: 18px; padding: 0 6px; border-radius: 999px; background: rgba(127,127,127,0.18); text-align: center; line-height: 18px; font-size: 11px; font-weight: 600; margin-left: 2px; }
   .rowcount .n { font-size: 13px; margin-left: 6px; }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 60px 16px; overflow-y: auto; }
+  .modal { background: var(--surface); color: inherit; border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px 22px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .modal h2 { font-size: 18px; margin: 0; }
+  .modal h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 20px 0 6px; }
+  .modal .x { background: transparent; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; padding: 2px 6px; }
+  .modal .x:hover { color: inherit; }
+  .modal .controls { margin-bottom: 4px; }
+  .modal textarea { width: 220px; height: 38px; min-height: 38px; resize: none; }
+  .modal input { padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: inherit; font-size: 14px; font-family: inherit; }
+  table.lists { box-shadow: none; margin: 8px 0 0; }
+  table.lists td { white-space: normal; }
+  table.lists td:first-child { position: static; font-weight: 500; }
+  table.lists td.meta { color: var(--muted); font-size: 12px; text-align: left; }
+  table.lists td.act { text-align: right; white-space: nowrap; }
+  table.lists td.act button { margin-left: 6px; }
+  table.lists input.rename { width: 220px; }
   .help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--muted); color: var(--muted); font-size: 11px; font-weight: 600; line-height: 1; margin-left: 6px; cursor: help; vertical-align: middle; user-select: none; }
   .help:hover { border-color: var(--accent); color: var(--accent); }
   th:first-child, td:first-child { position: sticky; left: 0; z-index: 2; background: var(--surface); }
@@ -769,6 +849,7 @@ INDEX_HTML = """<!doctype html>
     <dl>
       <dt>Ticker</dt><dd>A stock's short code, like AAPL for Apple. The company name is shown under it.</dd>
       <dt>Stock list</dt><dd>The group of stocks the scan looks through, such as the S&amp;P 500.</dd>
+      <dt>Saved list</dt><dd>A list you keep for later: tickers you typed, or the stocks that survived a scan, so you don't re-scan 2,600 stocks each time. Manage lists is next to the Stock list dropdown.</dd>
       <dt>Scan</dt><dd>Checks every stock in the list and keeps the ones whose price is rising and that pass the strictness level.</dd>
       <dt>Strictness</dt><dd>How picky the scan is. Low keeps every rising stock. Medium also needs enough price movement to pay well. High also needs a healthy company.</dd>
       <dt>Filter</dt><dd>Hides rows from the table. It never changes what was scanned.</dd>
@@ -800,11 +881,15 @@ INDEX_HTML = """<!doctype html>
   <section class="card scanbar">
     <div class="controls">
       <select id="universeSelect" onchange="onUniverseChange()" title="Which stocks to scan">
-        <option value="sp500" selected>S&amp;P 500</option>
-        <option value="russell2000">Russell 2000</option>
-        <option value="russell3000">Russell 3000</option>
-        <optgroup id="generatedUniverseGroup" label="Saved lists"></optgroup>
+        <optgroup label="Indexes">
+          <option value="sp500" selected>S&amp;P 500</option>
+          <option value="russell2000">Russell 2000</option>
+          <option value="russell3000">Russell 3000</option>
+        </optgroup>
+        <optgroup id="ownUniverseGroup" label="My lists"></optgroup>
+        <optgroup id="generatedUniverseGroup" label="Scan results"></optgroup>
       </select>
+      <button class="small" onclick="openListsModal()" title="Create, rename or delete saved lists">Manage lists</button>
       <select id="modeSelect" onchange="applyModePreset()" title="How picky the scan is. Low: every rising stock. Medium: also moves enough to pay well. High: also a healthy company.">
         <option value="general">Low strictness</option>
         <option value="options" selected>Medium strictness</option>
@@ -820,9 +905,9 @@ INDEX_HTML = """<!doctype html>
     <span id="universeNote" style="display:none"></span><span id="modeNote" style="display:none"></span><span id="styleCount" style="display:none"></span>
     <div class="controls ownrow">
       <textarea id="customSymbols" placeholder="Your tickers: AAPL, MSFT, KO" rows="1" title="Always shown, even where a filter would hide them. Cleared by the next scan."></textarea>
-      <select id="customScanMode" onchange="updateCustomRunLabel()" title="Add: your tickers join the table. Replace: the table shows only your tickers until the next scan.">
+      <select id="customScanMode" onchange="updateCustomRunLabel()" title="Add: your tickers join the table. Show only these: the table shows just your tickers until the next scan.">
         <option value="add" selected>Add to table</option>
-        <option value="replace">Replace table</option>
+        <option value="replace">Show only these</option>
       </select>
       <button id="customRunBtn" class="secondary" onclick="startCustomRun()">Add tickers</button>
       <span id="customStatus" class="statusline"></span>
@@ -898,13 +983,33 @@ INDEX_HTML = """<!doctype html>
 
   <div id="tooltipBox"></div>
 
-  <details class="advanced">
-    <summary>Saved lists</summary>
-    <div class="controls">
-      <button id="createUniverseBtn" onclick="createNewUniverse()" title="Scans the whole Russell 3000 at the current strictness (about 3 minutes) and saves the stocks that pass as a reusable list.">Create saved list</button>
-      <button id="deleteUniverseBtn" class="danger-outline" onclick="deleteSelectedUniverse()" disabled title="Only lists you created can be deleted.">Delete selected list</button>
+  </div>
+
+  <div id="listsModal" class="overlay" style="display:none;" onclick="if (event.target === this) closeListsModal()">
+    <div class="modal" role="dialog" aria-labelledby="listsTitle">
+      <div class="modal-head"><h2 id="listsTitle">Saved lists</h2><button class="x" onclick="closeListsModal()" aria-label="Close">&times;</button></div>
+      <p class="hint">A saved list is a group of tickers you keep for later: ones you typed, or the stocks that survived a scan. Pick one in the Stock list dropdown.</p>
+      <table class="lists" id="listsTable"><tbody id="listsBody"></tbody></table>
+      <p id="listsEmpty" class="hint" style="display:none;">No saved lists yet.</p>
+
+      <h3>New list from tickers</h3>
+      <div class="controls">
+        <textarea id="ownListSymbols" placeholder="AAPL, MSFT, KO" rows="1"></textarea>
+        <input id="ownListName" placeholder="Name, e.g. My picks" size="18">
+        <button id="ownListSaveBtn" class="small" onclick="saveOwnList()">Save list</button>
+        <span id="ownListMsg" class="hint inline"></span>
+      </div>
+
+      <h3>Save last scan as a list</h3>
+      <p id="scanSaveDesc" class="hint"></p>
+      <div class="controls">
+        <input id="scanListName" placeholder="Name" size="34">
+        <button id="scanListSaveBtn" class="small" onclick="saveScanList()">Save list</button>
+        <span id="scanListMsg" class="hint inline"></span>
+      </div>
+
+      <p class="hint" style="margin-top:14px;">Or <a class="reason" id="createUniverseBtn" onclick="createNewUniverse()">build one from the full Russell 3000</a> at the current strictness (about 3 minutes, thousands of requests).</p>
     </div>
-  </details>
   </div>
 
   <div id="tabSectors" style="display:none;">
@@ -1877,7 +1982,7 @@ async function pollStatus() {
   const statusEl = document.getElementById("status");
   const btn = document.getElementById("scanBtn");
   const customBtn = document.getElementById("customRunBtn");
-  const createBtn = document.getElementById("createUniverseBtn");
+  const createBtn = null;  // the Russell 3000 builder is a link inside the lists modal now; status line shows its progress
   if (s.status === "scanning" || s.status === "creating_universe") {
     const creating = s.status === "creating_universe";
     statusEl.textContent = creating
@@ -1978,22 +2083,23 @@ async function pollStatus() {
 // load and after any scan or universe-create/delete completes.
 async function refreshUniverseDropdown() {
   const group = document.getElementById("generatedUniverseGroup");
+  const ownGroup = document.getElementById("ownUniverseGroup");
   if (!group) return;
   const uSel = document.getElementById("universeSelect");
   const previousValue = uSel.value;
   try {
     const res = await fetch("/api/universes");
     const universes = await res.json();
-    group.innerHTML = "";
+    window.__universes = universes;
+    group.innerHTML = ""; ownGroup.innerHTML = "";
     universes.forEach(u => {
       const opt = document.createElement("option");
       opt.value = `generated:${u.id}`;
-      const d = new Date(u.generated_at * 1000);
-      const lvl = {general: "Low", options: "Medium", curated: "High"}[u.generated_under_mode] || "";
-      opt.textContent = `Saved list (${u.size} stocks, built ${d.toLocaleDateString([], {month: "numeric", day: "numeric"})}${lvl ? " at " + lvl + " strictness" : ""})`;
-      opt.dataset.mode = u.generated_under_mode || "";
-      group.appendChild(opt);
+      opt.textContent = `${u.name} (${u.size})`;
+      opt.dataset.mode = u.kind === "scan" ? (u.generated_under_mode || "") : "";
+      (u.kind === "own" ? ownGroup : group).appendChild(opt);
     });
+    if (document.getElementById("listsModal").style.display !== "none") renderListsModal();
     if (Array.from(uSel.options).some(o => o.value === previousValue)) {
       uSel.value = previousValue;
     }
@@ -2037,11 +2143,10 @@ function onUniverseChange() {
 
 async function createNewUniverse() {
   if (!confirm("This scans about 2,600 stocks, takes about 3 minutes and makes thousands of requests. Continue?")) return;
-  setBusy(document.getElementById("createUniverseBtn"), "Starting...");
+  closeListsModal();
   const mode = getEffectiveMode();
   const res = await fetch(`/api/universes?mode=${mode}`, {method: "POST"});
   if (res.status === 409) {
-    clearBusy(document.getElementById("createUniverseBtn"));
     document.getElementById("status").textContent = "scan already running";
     return;
   }
@@ -2058,6 +2163,92 @@ async function deleteSelectedUniverse() {
   if (res.ok) {
     uSel.value = "russell3000";
     await refreshUniverseDropdown();
+  }
+}
+
+function openListsModal() {
+  document.getElementById("listsModal").style.display = "";
+  document.getElementById("ownListMsg").textContent = "";
+  document.getElementById("scanListMsg").textContent = "";
+  renderListsModal();
+}
+function closeListsModal() { document.getElementById("listsModal").style.display = "none"; }
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeListsModal(); });
+
+async function renderListsModal() {
+  const body = document.getElementById("listsBody");
+  const list = window.__universes || [];
+  document.getElementById("listsEmpty").style.display = list.length ? "none" : "";
+  document.getElementById("listsTable").style.display = list.length ? "" : "none";
+  const lvl = {general: "Low", options: "Medium", curated: "High"};
+  body.innerHTML = list.map(u => {
+    const d = new Date(u.generated_at * 1000).toLocaleDateString([], {month: "numeric", day: "numeric"});
+    const kind = u.kind === "own" ? "My list" : `Scan result${u.generated_under_mode ? " \u00b7 " + lvl[u.generated_under_mode] : ""}${u.source ? " \u00b7 from " + u.source : ""}`;
+    return `<tr data-id="${u.id}"><td>${esc(u.name)}</td><td class="meta">${kind}</td><td class="meta">${u.size} stocks \u00b7 ${d}</td>` +
+      `<td class="act"><button class="small" onclick="renameList('${u.id}')">Rename</button><button class="small stop" onclick="deleteList('${u.id}')">Delete</button></td></tr>`;
+  }).join("");
+  // Scan-save section
+  try {
+    const r = await (await fetch("/api/universes/from_scan")).json();
+    const desc = document.getElementById("scanSaveDesc");
+    const btn = document.getElementById("scanListSaveBtn");
+    const nameEl = document.getElementById("scanListName");
+    if (r.ok) {
+      desc.textContent = `${r.size} stocks passed ${r.source} at ${lvl[r.mode] || r.mode} strictness. Saving them means later scans take seconds instead of minutes.`;
+      btn.disabled = false;
+      if (!nameEl.value) nameEl.value = r.default_name;
+    } else {
+      desc.textContent = "Run a scan first. The stocks it keeps can then be saved here.";
+      btn.disabled = true;
+    }
+  } catch (e) {}
+}
+
+async function saveOwnList() {
+  const symbols = document.getElementById("ownListSymbols").value.trim();
+  const name = document.getElementById("ownListName").value.trim();
+  const msg = document.getElementById("ownListMsg");
+  if (!symbols) { msg.textContent = "Type at least one ticker."; return; }
+  const res = await fetch("/api/universes/own", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({symbols, name})});
+  const d = await res.json();
+  if (!res.ok) { msg.textContent = d.message || "Could not save."; return; }
+  msg.textContent = `\u2713 Saved \u201c${d.name}\u201d (${d.size}).`;
+  document.getElementById("ownListSymbols").value = ""; document.getElementById("ownListName").value = "";
+  await refreshUniverseDropdown();
+  document.getElementById("universeSelect").value = `generated:${d.id}`; onUniverseChange();
+  renderListsModal();
+}
+
+async function saveScanList() {
+  const name = document.getElementById("scanListName").value.trim();
+  const msg = document.getElementById("scanListMsg");
+  const res = await fetch("/api/universes/from_scan", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name})});
+  const d = await res.json();
+  if (!res.ok) { msg.textContent = d.message || "Could not save."; return; }
+  msg.textContent = `\u2713 Saved \u201c${d.name}\u201d (${d.size}) and selected it.`;
+  document.getElementById("scanListName").value = "";
+  await refreshUniverseDropdown();
+  document.getElementById("universeSelect").value = `generated:${d.id}`; onUniverseChange();
+  renderListsModal();
+}
+
+async function renameList(uid) {
+  const u = (window.__universes || []).find(x => x.id === uid);
+  const name = prompt("New name:", u ? u.name : "");
+  if (name === null || !name.trim()) return;
+  const res = await fetch(`/api/universes/${uid}`, {method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: name.trim()})});
+  if (res.ok) { await refreshUniverseDropdown(); renderListsModal(); }
+}
+
+async function deleteList(uid) {
+  const u = (window.__universes || []).find(x => x.id === uid);
+  if (!confirm(`Delete \u201c${u ? u.name : uid}\u201d? This only removes the saved list. It cannot be undone.`)) return;
+  const res = await fetch(`/api/universes/${uid}`, {method: "DELETE"});
+  if (res.ok) {
+    const uSel = document.getElementById("universeSelect");
+    if (uSel.value === `generated:${uid}`) uSel.value = "sp500";
+    await refreshUniverseDropdown();
+    renderListsModal();
   }
 }
 
@@ -2102,7 +2293,7 @@ document.addEventListener("click", ev => {
 function updateCustomRunLabel() {
   const btn = document.getElementById("customRunBtn");
   const add = getCustomMode() === "add";
-  btn.textContent = add ? "Add tickers" : "Replace table";
+  btn.textContent = add ? "Add tickers" : "Show only these";
   btn.classList.toggle("warn", !add);
   delete btn.dataset.origText;  // setBusy/clearBusy remember the label; force it to re-read the new one
 }
