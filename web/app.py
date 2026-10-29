@@ -68,6 +68,10 @@ UNIVERSE_LOADERS = {
     "russell2000": lambda: get_russell_symbols("2000"),
     "russell3000": lambda: get_russell_symbols("3000"),
 }
+# Sector funds: scanning "XLI" means scanning its ten biggest holdings
+# (all Yahoo's free fund data lists).
+for _etf, _sector in SECTOR_ETFS:
+    UNIVERSE_LOADERS[f"etf:{_etf}"] = (lambda e: (lambda: [h["symbol"] for h in get_top_holdings(e)]))(_etf)
 
 # "Screening mode" per user request: which columns matter and how
 # aggressively to filter depends on whether you're hunting options-income
@@ -106,7 +110,7 @@ _state = {
     "error": None,
     "requested_limit": None,
     "custom_symbols": None,
-    "universe": "russell3000",
+    "universe": "sp500",
     "mode": "options",
     "last_created_universe": None,  # {id, name, size} — set once, right after Create New Universe finishes
     "append_mode": False,  # True only while/just after an "Add to current list" run — see _run_scan(append=...)
@@ -402,6 +406,7 @@ def api_universes_create():
 
 
 _INDEX_LABELS = {"sp500": "S&P 500", "russell2000": "Russell 2000", "russell3000": "Russell 3000"}
+_INDEX_LABELS.update({f"etf:{e}": f"{e} \u00b7 {sec}" for e, sec in SECTOR_ETFS})
 
 
 def _universe_label(universe: str) -> str:
@@ -851,10 +856,10 @@ INDEX_HTML = """<!doctype html>
     <p class="subhead">The basics</p>
     <dl>
       <dt>Ticker</dt><dd>A stock's short code, like AAPL for Apple. The company name is shown under it.</dd>
-      <dt>Stock list</dt><dd>The group of stocks the scan looks through, such as the S&amp;P 500.</dd>
+      <dt>Stock list</dt><dd>The group of stocks the scan looks through: a list of yours, a saved scan result, the S&amp;P 500, or a sector fund (its ten biggest holdings).</dd>
       <dt>Saved list</dt><dd>A list you keep for later: tickers you typed, or the stocks that survived a scan, so you don't re-scan 2,600 stocks each time. Manage lists is next to the Stock list dropdown.</dd>
       <dt>Scan</dt><dd>Checks every stock in the list and keeps the ones whose price is rising and that pass the strictness level.</dd>
-      <dt>Strictness</dt><dd>How picky the scan is. Low keeps every rising stock. Medium also needs enough price movement to pay well. High also needs a healthy company.</dd>
+      <dt>Strictness</dt><dd>How picky a built list is (Manage lists). Low keeps every rising stock. Medium also needs enough price movement to pay well. High also needs a healthy company.</dd>
       <dt>Filter</dt><dd>Hides rows from the table. It never changes what was scanned.</dd>
       <dt>Put</dt><dd>A contract where you get paid now for promising to buy 100 shares at a set price if the stock falls to it. &ldquo;Selling a put&rdquo; means making that promise.</dd>
       <dt>Strike price</dt><dd>The price you promise to buy at.</dd>
@@ -884,18 +889,17 @@ INDEX_HTML = """<!doctype html>
   <section class="card scanbar">
     <div class="controls">
       <select id="universeSelect" onchange="onUniverseChange()" title="Which stocks to scan">
-        <optgroup label="Indexes">
-          <option value="sp500" selected>S&amp;P 500</option>
-          <option value="russell2000">Russell 2000</option>
-          <option value="russell3000">Russell 3000</option>
-        </optgroup>
         <optgroup id="ownUniverseGroup" label="My lists"></optgroup>
         <optgroup id="generatedUniverseGroup" label="Scan results"></optgroup>
+        <optgroup label="Indexes">
+          <option value="sp500" selected>S&amp;P 500</option>
+          __ETF_OPTIONS__
+        </optgroup>
       </select>
       <button class="small" onclick="openListsModal()" title="Create, rename or delete saved lists">Manage lists</button>
-      <select id="modeSelect" onchange="applyModePreset()" title="How picky the scan is. Low: every rising stock. Medium: also moves enough to pay well. High: also a healthy company.">
-        <option value="general">Low strictness</option>
-        <option value="options" selected>Medium strictness</option>
+      <select id="modeSelect" onchange="applyModePreset()" style="display:none">
+        <option value="general" selected>Low strictness</option>
+        <option value="options">Medium strictness</option>
         <option value="curated">High strictness</option>
       </select>
       <button id="scanBtn" class="primary" onclick="startScan()">Run scan</button>
@@ -1011,17 +1015,17 @@ INDEX_HTML = """<!doctype html>
       </div>
 
       <h3>Build a list by scanning an index</h3>
-      <p class="hint">Scans the whole index at the chosen strictness and saves the stocks that pass. S&amp;P 500 takes about a minute; Russell 3000 about 3 minutes.</p>
+      <p class="hint">Scans a whole index at the chosen strictness and saves the stocks that pass. Low keeps every rising stock; Medium also needs enough movement to pay well; High also needs a healthy company. S&amp;P 500 takes about a minute; the Russells about 3.</p>
       <div class="controls">
         <select id="buildSource">
-          <option value="sp500">S&amp;P 500</option>
-          <option value="russell2000">Russell 2000</option>
-          <option value="russell3000" selected>Russell 3000</option>
+          <option value="sp500" selected>S&amp;P 500 (500 stocks)</option>
+          <option value="russell2000">Russell 2000 (about 2,000)</option>
+          <option value="russell3000">Russell 3000 (about 2,600)</option>
         </select>
         <select id="buildMode">
           <option value="general">Low strictness</option>
-          <option value="options">Medium strictness</option>
-          <option value="curated" selected>High strictness</option>
+          <option value="options" selected>Medium strictness</option>
+          <option value="curated">High strictness</option>
         </select>
         <button id="createUniverseBtn" class="small" onclick="createNewUniverse()">Build list</button>
       </div>
@@ -1865,10 +1869,10 @@ function updateAsOf(generatedAt) {
 // "general"/"options" as real values; "curated" is represented as
 // Options + the Strict checkbox.
 function syncModeControlsFrom(backendMode) {
-  const mSel = document.getElementById("modeSelect");
-  if (Array.from(mSel.options).some(o => o.value === backendMode)) {
-    mSel.value = backendMode;
-  }
+  // Strictness is chosen only when building a saved list (Manage lists).
+  // The page itself always scans at Low, so every stock in the chosen
+  // list that is rising shows up.
+  document.getElementById("modeSelect").value = "general";
 }
 
 async function whereIs() {
@@ -2159,7 +2163,7 @@ async function deleteSelectedUniverse() {
   const uid = uSel.value.split(":")[1];
   const res = await fetch(`/api/universes/${uid}`, {method: "DELETE"});
   if (res.ok) {
-    uSel.value = "russell3000";
+    uSel.value = "sp500";
     await refreshUniverseDropdown();
   }
 }
@@ -2514,6 +2518,7 @@ def index():
     return INDEX_HTML
 
 
+INDEX_HTML = INDEX_HTML.replace("__ETF_OPTIONS__", "\n".join(f'<option value="etf:{e}">{e} &middot; {sec}</option>' for e, sec in SECTOR_ETFS))
 INDEX_HTML = (INDEX_HTML.replace("__N_ETF__", str(len(SECTOR_ETFS)))
               .replace("__N_HOLD__", str(len(SECTOR_ETFS) * 10))
               .replace("__N_ALL__", str(len(SECTOR_ETFS) * 11)))
@@ -2528,7 +2533,7 @@ def run_dashboard(port: int = 8899, initial_limit: int | None = None):
     # on a genuinely first-ever run (no persisted config yet).
     last = _load_last_scan_config()
     if last:
-        args = (last.get("limit"), last.get("custom_symbols"), last.get("universe", "russell3000"), last.get("mode", "options"))
+        args = (last.get("limit"), last.get("custom_symbols"), last.get("universe", "russell3000"), last.get("mode", "general"))
     else:
         # First-ever run: a small S&P 500 scan so a fresh install finishes
         # in about a minute, not a full ~2,600-symbol Russell 3000 pull.
