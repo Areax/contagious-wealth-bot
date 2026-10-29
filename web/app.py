@@ -798,11 +798,27 @@ INDEX_HTML = """<!doctype html>
   .modal { background: var(--surface); color: inherit; border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px 22px; width: 100%; max-width: 640px; box-shadow: 0 20px 60px rgba(0,0,0,0.45); }
   .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
   .modal h2 { font-size: 18px; margin: 0; }
-  .modal h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 20px 0 6px; }
+  .modal h3 { font-size: 15px; font-weight: 600; color: inherit; margin: 0 0 10px; display: flex; align-items: center; }
+  .modal .panel { background: rgba(127,127,127,0.07); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-top: 12px; }
+  .modal .panel .controls { margin: 0; }
+  .modal .panel .hint { margin: 0 0 10px; }
+  .modal .msg { font-size: 13px; color: var(--accent); margin: 8px 0 0; }
+  .modal .msg:empty { display: none; }
+  .modal .panel button { padding: 9px 18px; border-radius: 999px; border: none; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 14px; cursor: pointer; }
+  .modal .panel button:disabled { opacity: 0.45; cursor: default; }
+  .listrows { display: flex; flex-direction: column; }
+  .listrow { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .listrow:last-child { border-bottom: none; }
+  .listrow .nm { font-weight: 600; flex: 1; min-width: 0; }
+  .listrow .nm small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+  .listrow .act { display: flex; gap: 6px; }
+  .modal .panel .listrow button { background: transparent; color: inherit; border: 1px solid var(--line); font-weight: 500; padding: 5px 12px; font-size: 12px; }
+  .modal .panel .listrow button.del { color: #f87171; }
+  .modal .panel .listrow button:hover { border-color: currentColor; }
   .modal .x { background: transparent; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; padding: 2px 6px; }
   .modal .x:hover { color: inherit; }
   .modal .controls { margin-bottom: 4px; }
-  .modal textarea { width: 220px; height: 38px; min-height: 38px; resize: none; }
+  .modal textarea { width: 240px; height: 40px; min-height: 40px; resize: none; box-sizing: border-box; }
   .modal input { padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: inherit; font-size: 14px; font-family: inherit; }
   table.lists { box-shadow: none; margin: 8px 0 0; }
   table.lists td { white-space: normal; }
@@ -994,41 +1010,50 @@ INDEX_HTML = """<!doctype html>
   <div id="listsModal" class="overlay" style="display:none;" onclick="if (event.target === this) closeListsModal()">
     <div class="modal" role="dialog" aria-labelledby="listsTitle">
       <div class="modal-head"><h2 id="listsTitle">Saved lists</h2><button class="x" onclick="closeListsModal()" aria-label="Close">&times;</button></div>
-      <p class="hint">A saved list is a group of tickers you keep for later: ones you typed, or the stocks that survived a scan. Pick one in the Stock list dropdown.</p>
-      <table class="lists" id="listsTable"><tbody id="listsBody"></tbody></table>
-      <p id="listsEmpty" class="hint" style="display:none;">No saved lists yet.</p>
+      <p class="hint" style="margin:0 0 14px;">Groups of tickers you keep for later. Pick one in the Stock list dropdown.</p>
 
-      <h3>New list from tickers</h3>
-      <div class="controls">
-        <textarea id="ownListSymbols" placeholder="AAPL, MSFT, KO" rows="1"></textarea>
-        <input id="ownListName" placeholder="Name, e.g. My picks" size="18">
-        <button id="ownListSaveBtn" class="small" onclick="saveOwnList()">Save list</button>
-        <span id="ownListMsg" class="hint inline"></span>
-      </div>
+      <section class="panel">
+        <h3>Your lists</h3>
+        <div id="listsBody" class="listrows"></div>
+        <p id="listsEmpty" class="hint" style="display:none; margin:0;">None yet. Make one below.</p>
+      </section>
 
-      <h3>Keep the last scan's results</h3>
-      <p id="scanSaveDesc" class="hint"></p>
-      <div class="controls">
-        <input id="scanListName" placeholder="Name" size="34">
-        <button id="scanListSaveBtn" class="small" onclick="saveScanList()">Save list</button>
-        <span id="scanListMsg" class="hint inline"></span>
-      </div>
+      <section class="panel">
+        <h3>New list from tickers</h3>
+        <div class="controls">
+          <textarea id="ownListSymbols" placeholder="AAPL, MSFT, KO" rows="1"></textarea>
+          <input id="ownListName" placeholder="Name" size="14">
+          <button id="ownListSaveBtn" onclick="saveOwnList()">Save</button>
+        </div>
+        <p id="ownListMsg" class="msg"></p>
+      </section>
 
-      <h3>Build a list by scanning an index</h3>
-      <p class="hint">Scans a whole index at the chosen strictness and saves the stocks that pass. Low keeps every rising stock; Medium also needs enough movement to pay well; High also needs a healthy company. S&amp;P 500 takes about a minute; the Russells about 3.</p>
-      <div class="controls">
-        <select id="buildSource">
-          <option value="sp500" selected>S&amp;P 500 (500 stocks)</option>
-          <option value="russell2000">Russell 2000 (about 2,000)</option>
-          <option value="russell3000">Russell 3000 (about 2,600)</option>
-        </select>
-        <select id="buildMode">
-          <option value="general">Low strictness</option>
-          <option value="options" selected>Medium strictness</option>
-          <option value="curated">High strictness</option>
-        </select>
-        <button id="createUniverseBtn" class="small" onclick="createNewUniverse()">Build list</button>
-      </div>
+      <section class="panel">
+        <h3>Keep the last scan's results</h3>
+        <p id="scanSaveDesc" class="hint"></p>
+        <div class="controls">
+          <input id="scanListName" placeholder="Name" size="30">
+          <button id="scanListSaveBtn" onclick="saveScanList()">Save</button>
+        </div>
+        <p id="scanListMsg" class="msg"></p>
+      </section>
+
+      <section class="panel">
+        <h3>Build a list by scanning an index<span class="help" data-help="Scans every stock in the index and keeps the ones that pass. Low: every rising stock. Medium: also moves enough to pay well. High: also a healthy company. S&amp;P 500 takes about a minute; the Russells about 3 minutes and thousands of requests.">?</span></h3>
+        <div class="controls">
+          <select id="buildSource">
+            <option value="sp500" selected>S&amp;P 500</option>
+            <option value="russell2000">Russell 2000</option>
+            <option value="russell3000">Russell 3000</option>
+          </select>
+          <select id="buildMode">
+            <option value="general">Low strictness</option>
+            <option value="options" selected>Medium strictness</option>
+            <option value="curated">High strictness</option>
+          </select>
+          <button id="createUniverseBtn" onclick="createNewUniverse()">Build</button>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -2181,13 +2206,12 @@ async function renderListsModal() {
   const body = document.getElementById("listsBody");
   const list = window.__universes || [];
   document.getElementById("listsEmpty").style.display = list.length ? "none" : "";
-  document.getElementById("listsTable").style.display = list.length ? "" : "none";
   const lvl = {general: "Low", options: "Medium", curated: "High"};
   body.innerHTML = list.map(u => {
     const d = new Date(u.generated_at * 1000).toLocaleDateString([], {month: "numeric", day: "numeric"});
-    const kind = u.kind === "own" ? "My list" : `Scan result${u.generated_under_mode ? " \u00b7 " + lvl[u.generated_under_mode] : ""}${u.source ? " \u00b7 from " + u.source : ""}`;
-    return `<tr data-id="${u.id}"><td>${esc(u.name)}</td><td class="meta">${kind}</td><td class="meta">${u.size} stocks \u00b7 ${d}</td>` +
-      `<td class="act"><button class="small" onclick="renameList('${u.id}')">Rename</button><button class="small stop" onclick="deleteList('${u.id}')">Delete</button></td></tr>`;
+    const kind = u.kind === "own" ? "Typed by you" : `Scan of ${u.source || "an index"}${u.generated_under_mode ? " at " + lvl[u.generated_under_mode] : ""}`;
+    return `<div class="listrow" data-id="${u.id}"><div class="nm">${esc(u.name)}<small>${u.size} stocks \u00b7 ${kind} \u00b7 ${d}</small></div>` +
+      `<div class="act"><button onclick="renameList('${u.id}')">Rename</button><button class="del" onclick="deleteList('${u.id}')">Delete</button></div></div>`;
   }).join("");
   // Scan-save section
   try {
@@ -2196,11 +2220,11 @@ async function renderListsModal() {
     const btn = document.getElementById("scanListSaveBtn");
     const nameEl = document.getElementById("scanListName");
     if (r.ok) {
-      desc.textContent = `The last scan kept ${r.size} stocks (from ${r.source}, ${lvl[r.mode] || r.mode} strictness). Save them as a list to scan just those next time.`;
+      desc.textContent = `${r.size} stocks from the last scan of ${r.source}.`;
       btn.disabled = false;
       if (!nameEl.value) nameEl.value = r.default_name;
     } else {
-      desc.textContent = "Run a scan first. The stocks it keeps can then be saved here.";
+      desc.textContent = "Run a scan first.";
       btn.disabled = true;
     }
   } catch (e) {}
