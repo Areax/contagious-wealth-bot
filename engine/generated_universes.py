@@ -27,7 +27,7 @@ import uuid
 from pathlib import Path
 
 from config import strategy_rules as rules
-from data.universe import get_russell_symbols
+from data.universe import get_russell_symbols, get_sp500_symbols
 from engine.csp_dashboard import scan_universe
 
 STORE_DIR = Path(__file__).resolve().parent.parent / "cache" / "generated_universes"
@@ -41,12 +41,20 @@ _MODE_CRITERIA = {
 }
 
 
-def create_universe(mode: str, progress_cb=None, cancel_event=None) -> dict:
-    """Runs the expensive full-Russell-3000 discovery scan and persists a
-    new universe record. Returns the full record (including symbols).
-    cancel_event: threading.Event | None — see scan_universe."""
+SOURCES = {
+    "sp500": ("S&P 500", get_sp500_symbols),
+    "russell2000": ("Russell 2000", lambda: get_russell_symbols("2000")),
+    "russell3000": ("Russell 3000", lambda: get_russell_symbols("3000")),
+}
+
+
+def create_universe(mode: str, source: str = "russell3000", progress_cb=None, cancel_event=None) -> dict:
+    """Scans a whole index (S&P 500 or a Russell) under the given mode's
+    criteria and persists the survivors as a new saved list. Returns the
+    full record (including symbols). cancel_event: threading.Event | None."""
     criteria = _MODE_CRITERIA[mode]
-    source_symbols = get_russell_symbols("3000")
+    source_label, loader = SOURCES.get(source, SOURCES["russell3000"])
+    source_symbols = loader()
     rows, removed_uptrend, removed_vol, removed_fundamentals, _reasons = scan_universe(
         source_symbols,
         progress_cb=progress_cb,
@@ -58,8 +66,8 @@ def create_universe(mode: str, progress_cb=None, cancel_event=None) -> dict:
     )
     symbols = sorted(r.symbol for r in rows if r.error is None)
     record = save_universe(
-        name=f"Rising at {MODE_LABELS.get(mode, mode)} \u00b7 from Russell 3000 \u00b7 {_date_str()}",
-        symbols=symbols, kind="scan", source="Russell 3000", mode=mode,
+        name=default_scan_name(source_label, mode),
+        symbols=symbols, kind="scan", source=source_label, mode=mode,
         extra={
             "source_universe_size": len(source_symbols),
             "removed_no_uptrend": removed_uptrend,

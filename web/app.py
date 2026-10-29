@@ -345,7 +345,7 @@ def api_universes_list():
     return jsonify(list_universes())
 
 
-def _run_create_universe(mode: str):
+def _run_create_universe(mode: str, source: str = "russell3000"):
     with _state_lock:
         if _state["status"] in _BUSY_STATUSES:
             return
@@ -367,7 +367,7 @@ def _run_create_universe(mode: str):
         # (rows for symbols never reached simply aren't in the result) —
         # a partial universe is more useful than nothing, but the status
         # below makes clear it's partial, not a full clean completion.
-        record = create_universe(mode, progress_cb=progress_cb, cancel_event=_cancel_event)
+        record = create_universe(mode, source=source, progress_cb=progress_cb, cancel_event=_cancel_event)
         with _state_lock:
             _state["last_created_universe"] = {"id": record["id"], "name": record["name"], "size": len(record["symbols"])}
             _state["status"] = "cancelled" if _cancel_event.is_set() else "done"
@@ -385,15 +385,18 @@ def api_universes_create():
     universe — see engine/generated_universes.py. Never overwrites an
     existing one."""
     mode = request.args.get("mode", "options")
+    source = request.args.get("source", "russell3000")
     if mode not in MODE_MIN_REALIZED_VOL:
         return jsonify({"ok": False, "message": f"unknown mode {mode!r}"}), 400
+    if source not in UNIVERSE_LOADERS:
+        return jsonify({"ok": False, "message": f"unknown source {source!r}"}), 400
 
     with _state_lock:
         already_running = _state["status"] in _BUSY_STATUSES
     if already_running:
         return jsonify({"ok": False, "message": "scan already in progress"}), 409
 
-    t = threading.Thread(target=_run_create_universe, args=(mode,), daemon=True)
+    t = threading.Thread(target=_run_create_universe, args=(mode, source), daemon=True)
     t.start()
     return jsonify({"ok": True})
 
@@ -900,7 +903,6 @@ INDEX_HTML = """<!doctype html>
       <span id="status"></span>
     </div>
     <p id="listChangeCue" class="cue" style="display:none;">List changed. Run scan to apply.</p>
-    <p id="modeConflictCue" class="hint" style="display:none;"></p>
     <p id="fetchStatus" class="statusline" style="display:none;"></p>
     <span id="universeNote" style="display:none"></span><span id="modeNote" style="display:none"></span><span id="styleCount" style="display:none"></span>
     <div class="controls ownrow">
@@ -1000,7 +1002,7 @@ INDEX_HTML = """<!doctype html>
         <span id="ownListMsg" class="hint inline"></span>
       </div>
 
-      <h3>Save last scan as a list</h3>
+      <h3>Keep the last scan's results</h3>
       <p id="scanSaveDesc" class="hint"></p>
       <div class="controls">
         <input id="scanListName" placeholder="Name" size="34">
@@ -1008,7 +1010,21 @@ INDEX_HTML = """<!doctype html>
         <span id="scanListMsg" class="hint inline"></span>
       </div>
 
-      <p class="hint" style="margin-top:14px;">Or <a class="reason" id="createUniverseBtn" onclick="createNewUniverse()">build one from the full Russell 3000</a> at the current strictness (about 3 minutes, thousands of requests).</p>
+      <h3>Build a list by scanning an index</h3>
+      <p class="hint">Scans the whole index at the chosen strictness and saves the stocks that pass. S&amp;P 500 takes about a minute; Russell 3000 about 3 minutes.</p>
+      <div class="controls">
+        <select id="buildSource">
+          <option value="sp500">S&amp;P 500</option>
+          <option value="russell2000">Russell 2000</option>
+          <option value="russell3000" selected>Russell 3000</option>
+        </select>
+        <select id="buildMode">
+          <option value="general">Low strictness</option>
+          <option value="options">Medium strictness</option>
+          <option value="curated" selected>High strictness</option>
+        </select>
+        <button id="createUniverseBtn" class="small" onclick="createNewUniverse()">Build list</button>
+      </div>
     </div>
   </div>
 
@@ -1129,7 +1145,6 @@ function applyModePreset() {
       if (visible) hiddenColumns.delete(col); else hiddenColumns.add(col);
     });
   }
-  updateModeConflictCue();
   const note = document.getElementById("modeNote");
   if (mode === "options") {
     note.textContent = `Medium hides stocks that barely move (under ${(OPTIONS_MODE_MIN_REALIZED_VOL * 100).toFixed(0)}% a year), since they pay little.`;
@@ -1953,24 +1968,6 @@ function updateListLabel() {
   el.innerHTML = `${main}${open ? "" : " \u00b7 market closed"} <span class="help" data-help="${esc(help)}">?</span>`;
 }
 
-// A saved list built at a stricter level than the current dropdown can't
-// be widened by scanning it again at a looser level \u2014 say so.
-function updateModeConflictCue() {
-  const cue = document.getElementById("modeConflictCue");
-  if (!cue) return;
-  const uSel = document.getElementById("universeSelect");
-  const opt = uSel.options[uSel.selectedIndex];
-  const rank = {general: 0, options: 1, curated: 2};
-  const built = opt && opt.dataset ? opt.dataset.mode : "";
-  const cur = getEffectiveMode();
-  const names = {general: "Low", options: "Medium", curated: "High"};
-  if (built && rank[built] > rank[cur]) {
-    cue.textContent = `This list was built at ${names[built]} strictness, so ${names[cur]} cannot add stocks back. Pick S&P 500 or Russell to scan wider.`;
-    cue.style.display = "";
-  } else {
-    cue.style.display = "none";
-  }
-}
 
 async function pollStatus() {
   const res = await fetch("/api/status");
@@ -2122,7 +2119,6 @@ function updateListChangeCue() {
 
 function onUniverseChange() {
   updateListChangeCue();
-  updateModeConflictCue();
   const note = document.getElementById("universeNote");
   const v = document.getElementById("universeSelect").value;
   if (note) note.textContent = v.startsWith("generated:")
@@ -2142,10 +2138,12 @@ function onUniverseChange() {
 }
 
 async function createNewUniverse() {
-  if (!confirm("This scans about 2,600 stocks, takes about 3 minutes and makes thousands of requests. Continue?")) return;
+  const source = document.getElementById("buildSource").value;
+  const mode = document.getElementById("buildMode").value;
+  const big = source !== "sp500";
+  if (!confirm(big ? "This scans about 2,600 stocks, takes about 3 minutes and makes thousands of requests. Continue?" : "This scans 500 stocks and takes about a minute. Continue?")) return;
   closeListsModal();
-  const mode = getEffectiveMode();
-  const res = await fetch(`/api/universes?mode=${mode}`, {method: "POST"});
+  const res = await fetch(`/api/universes?mode=${mode}&source=${source}`, {method: "POST"});
   if (res.status === 409) {
     document.getElementById("status").textContent = "scan already running";
     return;
@@ -2194,7 +2192,7 @@ async function renderListsModal() {
     const btn = document.getElementById("scanListSaveBtn");
     const nameEl = document.getElementById("scanListName");
     if (r.ok) {
-      desc.textContent = `${r.size} stocks passed ${r.source} at ${lvl[r.mode] || r.mode} strictness. Saving them means later scans take seconds instead of minutes.`;
+      desc.textContent = `The last scan kept ${r.size} stocks (from ${r.source}, ${lvl[r.mode] || r.mode} strictness). Save them as a list to scan just those next time.`;
       btn.disabled = false;
       if (!nameEl.value) nameEl.value = r.default_name;
     } else {
