@@ -1,0 +1,574 @@
+{
+  "XLB": [
+    {
+      "symbol": "LIN",
+      "name": "Linde PLC",
+      "weight": 0.1284254
+    },
+    {
+      "symbol": "NEM",
+      "name": "Newmont Corp",
+      "weight": 0.0608575
+    },
+    {
+      "symbol": "VMC",
+      "name": "Vulcan Materials Co",
+      "weight": 0.0513588
+    },
+    {
+      "symbol": "ECL",
+      "name": "Ecolab Inc",
+      "weight": 0.0507906
+    },
+    {
+      "symbol": "APD",
+      "name": "Air Products and Chemicals Inc",
+      "weight": 0.0489068
+    },
+    {
+      "symbol": "MLM",
+      "name": "Martin Marietta Materials Inc",
+      "weight": 0.0486045
+    },
+    {
+      "symbol": "FCX",
+      "name": "Freeport-McMoRan Inc",
+      "weight": 0.0486001
+    },
+    {
+      "symbol": "NUE",
+      "name": "Nucor Corp",
+      "weight": 0.0484558
+    },
+    {
+      "symbol": "STLD",
+      "name": "Steel Dynamics Inc",
+      "weight": 0.0475492
+    },
+    {
+      "symbol": "SHW",
+      "name": "Sherwin-Williams Co",
+      "weight": 0.0473353
+    }
+  ],
+  "XLC": [
+    {
+      "symbol": "META",
+      "name": "Meta Platforms Inc Class A",
+      "weight": 0.2200402
+    },
+    {
+      "symbol": "GOOGL",
+      "name": "Alphabet Inc Class A",
+      "weight": 0.1107959
+    },
+    {
+      "symbol": "GOOG",
+      "name": "Alphabet Inc Class C",
+      "weight": 0.08922789
+    },
+    {
+      "symbol": "DIS",
+      "name": "The Walt Disney Co",
+      "weight": 0.055531904
+    },
+    {
+      "symbol": "CMCSA",
+      "name": "Comcast Corp Class A",
+      "weight": 0.049242903
+    },
+    {
+      "symbol": "TTWO",
+      "name": "Take-Two Interactive Software Inc",
+      "weight": 0.046968598
+    },
+    {
+      "symbol": "VZ",
+      "name": "Verizon Communications Inc",
+      "weight": 0.0468956
+    },
+    {
+      "symbol": "TMUS",
+      "name": "T-Mobile US Inc",
+      "weight": 0.046002697
+    },
+    {
+      "symbol": "T",
+      "name": "AT&T Inc",
+      "weight": 0.0443934
+    },
+    {
+      "symbol": "NFLX",
+      "name": "Netflix Inc",
+      "weight": 0.042579997
+    }
+  ],
+  "XLE": [
+    {
+      "symbol": "XOM",
+      "name": "ExxonMobil Holdings Corp",
+      "weight": 0.2429253
+    },
+    {
+      "symbol": "CVX",
+      "name": "Chevron Corp",
+      "weight": 0.18293011
+    },
+    {
+      "symbol": "COP",
+      "name": "ConocoPhillips",
+      "weight": 0.072743
+    },
+    {
+      "symbol": "MPC",
+      "name": "Marathon Petroleum Corp",
+      "weight": 0.0464119
+    },
+    {
+      "symbol": "PSX",
+      "name": "Phillips 66",
+      "weight": 0.0452105
+    },
+    {
+      "symbol": "VLO",
+      "name": "Valero Energy Corp",
+      "weight": 0.0428338
+    },
+    {
+      "symbol": "WMB",
+      "name": "Williams Companies Inc",
+      "weight": 0.041242
+    },
+    {
+      "symbol": "EOG",
+      "name": "EOG Resources Inc",
+      "weight": 0.0406777
+    },
+    {
+      "symbol": "SLB",
+      "name": "SLB Ltd",
+      "weight": 0.0373643
+    },
+    {
+      "symbol": "TRGP",
+      "name": "Targa Resources Corp",
+      "weight": 0.0316421
+    }
+  ],
+  "XLF": [
+    {
+      "symbol": "BRK-B",
+      "name": "Berkshire Hathaway Inc Class B",
+      "weight": 0.1267632
+    },
+    {
+      "symbol": "JPM",
+      "name": "JPMorgan Chase & Co",
+      "weight": 0.1124048
+    },
+    {
+      "symbol": "V",
+      "name": "Visa Inc Class A",
+      "weight": 0.0884268
+    },
+    {
+      "symbol": "MA",
+      "name": "Mastercard Inc Class A",
+      "weight": 0.0647258
+    },
+    {
+      "symbol": "BAC",
+      "name": "Bank of America Corp",
+      "weight": 0.040805202
+    },
+    {
+      "symbol": "GS",
+      "name": "The Goldman Sachs Group Inc",
+      "weight": 0.0326768
+    },
+    {
+      "symbol": "WFC",
+      "name": "Wells Fargo & Co",
+      "weight": 0.0316421
+    },
+    {
+      "symbol": "MS",
+      "name": "Morgan Stanley",
+      "weight": 0.0276005
+    },
+    {
+      "symbol": "C",
+      "name": "Citigroup Inc",
+      "weight": 0.0258108
+    },
+    {
+      "symbol": "AXP",
+      "name": "American Express Co",
+      "weight": 0.021088801
+    }
+  ],
+  "XLI": [
+    {
+      "symbol": "GE",
+      "name": "GE Aerospace",
+      "weight": 0.058828402
+    },
+    {
+      "symbol": "CAT",
+      "name": "Caterpillar Inc",
+      "weight": 0.053779997
+    },
+    {
+      "symbol": "RTX",
+      "name": "RTX Corp",
+      "weight": 0.0505899
+    },
+    {
+      "symbol": "GEV",
+      "name": "GE Vernova Inc",
+      "weight": 0.0429242
+    },
+    {
+      "symbol": "UNP",
+      "name": "Union Pacific Corp",
+      "weight": 0.033930197
+    },
+    {
+      "symbol": "DE",
+      "name": "Deere & Co",
+      "weight": 0.0318591
+    },
+    {
+      "symbol": "ETN",
+      "name": "Eaton Corp PLC",
+      "weight": 0.026996901
+    },
+    {
+      "symbol": "BA",
+      "name": "Boeing Co",
+      "weight": 0.025474
+    },
+    {
+      "symbol": "UBER",
+      "name": "Uber Technologies Inc",
+      "weight": 0.025039999
+    },
+    {
+      "symbol": "LMT",
+      "name": "Lockheed Martin Corp",
+      "weight": 0.024306
+    }
+  ],
+  "XLK": [
+    {
+      "symbol": "AAPL",
+      "name": "Apple Inc",
+      "weight": 0.15312271
+    },
+    {
+      "symbol": "NVDA",
+      "name": "NVIDIA Corp",
+      "weight": 0.15076919
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft Corp",
+      "weight": 0.117986
+    },
+    {
+      "symbol": "AVGO",
+      "name": "Broadcom Inc",
+      "weight": 0.0472298
+    },
+    {
+      "symbol": "AMD",
+      "name": "Advanced Micro Devices Inc",
+      "weight": 0.045416098
+    },
+    {
+      "symbol": "MU",
+      "name": "Micron Technology Inc",
+      "weight": 0.0403578
+    },
+    {
+      "symbol": "PLTR",
+      "name": "Palantir Technologies Inc Ordinary Shares - Class A",
+      "weight": 0.0261107
+    },
+    {
+      "symbol": "CSCO",
+      "name": "Cisco Systems Inc",
+      "weight": 0.0253917
+    },
+    {
+      "symbol": "INTC",
+      "name": "Intel Corp",
+      "weight": 0.0201421
+    },
+    {
+      "symbol": "AMAT",
+      "name": "Applied Materials Inc",
+      "weight": 0.019091701
+    }
+  ],
+  "XLP": [
+    {
+      "symbol": "WMT",
+      "name": "Walmart Inc",
+      "weight": 0.1114249
+    },
+    {
+      "symbol": "COST",
+      "name": "Costco Wholesale Corp",
+      "weight": 0.0908775
+    },
+    {
+      "symbol": "PG",
+      "name": "Procter & Gamble Co",
+      "weight": 0.0760259
+    },
+    {
+      "symbol": "KO",
+      "name": "Coca-Cola Co",
+      "weight": 0.0737478
+    },
+    {
+      "symbol": "PM",
+      "name": "Philip Morris International Inc",
+      "weight": 0.065876596
+    },
+    {
+      "symbol": "MO",
+      "name": "Altria Group Inc",
+      "weight": 0.046964597
+    },
+    {
+      "symbol": "CL",
+      "name": "Colgate-Palmolive Co",
+      "weight": 0.0442283
+    },
+    {
+      "symbol": "MDLZ",
+      "name": "Mondelez International Inc Class A",
+      "weight": 0.042511202
+    },
+    {
+      "symbol": "PEP",
+      "name": "PepsiCo Inc",
+      "weight": 0.0410559
+    },
+    {
+      "symbol": "TGT",
+      "name": "Target Corp",
+      "weight": 0.040047
+    }
+  ],
+  "XLRE": [
+    {
+      "symbol": "WELL",
+      "name": "Welltower Inc",
+      "weight": 0.1132914
+    },
+    {
+      "symbol": "PLD",
+      "name": "Prologis Inc",
+      "weight": 0.0814914
+    },
+    {
+      "symbol": "EQIX",
+      "name": "Equinix Inc",
+      "weight": 0.0670195
+    },
+    {
+      "symbol": "AMT",
+      "name": "American Tower Corp",
+      "weight": 0.0586266
+    },
+    {
+      "symbol": "PSA",
+      "name": "Public Storage",
+      "weight": 0.0497208
+    },
+    {
+      "symbol": "SPG",
+      "name": "Simon Property Group Inc",
+      "weight": 0.0480153
+    },
+    {
+      "symbol": "DLR",
+      "name": "Digital Realty Trust Inc",
+      "weight": 0.043103
+    },
+    {
+      "symbol": "VMRK",
+      "name": "Vivmark Residential",
+      "weight": 0.0429638
+    },
+    {
+      "symbol": "VTR",
+      "name": "Ventas Inc",
+      "weight": 0.042790398
+    },
+    {
+      "symbol": "O",
+      "name": "Realty Income Corp",
+      "weight": 0.0427153
+    }
+  ],
+  "XLU": [
+    {
+      "symbol": "NEE",
+      "name": "NextEra Energy Inc",
+      "weight": 0.1276792
+    },
+    {
+      "symbol": "SO",
+      "name": "Southern Co",
+      "weight": 0.0788232
+    },
+    {
+      "symbol": "DUK",
+      "name": "Duke Energy Corp",
+      "weight": 0.0726261
+    },
+    {
+      "symbol": "CEG",
+      "name": "Constellation Energy Corp",
+      "weight": 0.063214995
+    },
+    {
+      "symbol": "AEP",
+      "name": "American Electric Power Co Inc",
+      "weight": 0.051831197
+    },
+    {
+      "symbol": "D",
+      "name": "Dominion Energy Inc",
+      "weight": 0.042843297
+    },
+    {
+      "symbol": "SRE",
+      "name": "Sempra",
+      "weight": 0.0411479
+    },
+    {
+      "symbol": "ETR",
+      "name": "Entergy Corp",
+      "weight": 0.037569698
+    },
+    {
+      "symbol": "XEL",
+      "name": "Xcel Energy Inc",
+      "weight": 0.036456
+    },
+    {
+      "symbol": "EXC",
+      "name": "Exelon Corp",
+      "weight": 0.0348405
+    }
+  ],
+  "XLV": [
+    {
+      "symbol": "LLY",
+      "name": "Eli Lilly and Co",
+      "weight": 0.16880961
+    },
+    {
+      "symbol": "JNJ",
+      "name": "Johnson & Johnson",
+      "weight": 0.0979879
+    },
+    {
+      "symbol": "ABBV",
+      "name": "AbbVie Inc",
+      "weight": 0.0775566
+    },
+    {
+      "symbol": "MRK",
+      "name": "Merck & Co Inc",
+      "weight": 0.0549029
+    },
+    {
+      "symbol": "UNH",
+      "name": "UnitedHealth Group Inc",
+      "weight": 0.0543673
+    },
+    {
+      "symbol": "TMO",
+      "name": "Thermo Fisher Scientific Inc",
+      "weight": 0.0383561
+    },
+    {
+      "symbol": "AMGN",
+      "name": "Amgen Inc",
+      "weight": 0.0374966
+    },
+    {
+      "symbol": "GILD",
+      "name": "Gilead Sciences Inc",
+      "weight": 0.031498
+    },
+    {
+      "symbol": "ABT",
+      "name": "Abbott Laboratories",
+      "weight": 0.027350198
+    },
+    {
+      "symbol": "PFE",
+      "name": "Pfizer Inc",
+      "weight": 0.0258899
+    }
+  ],
+  "XLY": [
+    {
+      "symbol": "AMZN",
+      "name": "Amazon.com Inc",
+      "weight": 0.2128973
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla Inc",
+      "weight": 0.1878458
+    },
+    {
+      "symbol": "HD",
+      "name": "The Home Depot Inc",
+      "weight": 0.0547311
+    },
+    {
+      "symbol": "MCD",
+      "name": "McDonald's Corp",
+      "weight": 0.0445511
+    },
+    {
+      "symbol": "TJX",
+      "name": "TJX Companies Inc",
+      "weight": 0.040739898
+    },
+    {
+      "symbol": "SBUX",
+      "name": "Starbucks Corp",
+      "weight": 0.0310659
+    },
+    {
+      "symbol": "LOW",
+      "name": "Lowe's Companies Inc",
+      "weight": 0.030815
+    },
+    {
+      "symbol": "BKNG",
+      "name": "Booking Holdings Inc",
+      "weight": 0.029256498
+    },
+    {
+      "symbol": "MAR",
+      "name": "Marriott International Inc Class A",
+      "weight": 0.022430899
+    },
+    {
+      "symbol": "HLT",
+      "name": "Hilton Worldwide Holdings Inc",
+      "weight": 0.0211039
+    }
+  ]
+}

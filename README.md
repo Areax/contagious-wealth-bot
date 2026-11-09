@@ -59,6 +59,11 @@ source .venv/bin/activate && python main.py web
 
 Then open <http://127.0.0.1:8899> in your browser.
 
+The tabs along the top:
+
+- **Put finder** and **Sector signals**: cash-secured put candidates and sector-fund chart patterns.
+- **Market overview, Sectors, Stock lookup, Signal combos**: market mood, the daily S&P 500 signal scan, price charts with signal history, and backtests. While the bot is running it updates them by itself on weekdays at 12am, 8am and 5pm Eastern (the S&P 500 studies change once a day, after the 5pm close). If your computer was asleep or the bot was closed at one of those times, it catches up when the bot is running again. The first S&P 500 refresh takes several minutes.
+
 The first scan takes a minute or two. Stocks appear in the table as they are ready. Hover any **?** in the page for an explanation.
 
 To stop: go back to the terminal and press **Ctrl+C**.

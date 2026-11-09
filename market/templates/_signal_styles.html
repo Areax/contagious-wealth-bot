@@ -1,0 +1,60 @@
+  /* Shared by the Sectors and Stock lookup pages. Rise/drop/unproven is the
+     only color language: green = expects a rise, rose = expects a drop,
+     slate = no proven edge. Blue only marks things you can click. */
+  :root { --rise: #3fb950; --drop: #f47067; --quiet: #768390; --surface: #161b22; --line: #2a323d; }
+  [hidden] { display: none !important; }
+  body.sig-page { max-width: 1180px; margin: 0 auto; font-variant-numeric: tabular-nums; }
+  .sig-page h1 { font-size: 28px; letter-spacing: -0.3px; }
+  .sig-page h2 { font-size: 20px; margin: 0 0 6px; font-weight: 650; letter-spacing: -0.2px; }
+  .sig-page section { margin: 0 0 36px; }
+  .sig-page .lede { color: var(--muted); font-size: 14px; line-height: 1.55; max-width: 72ch; margin: 0 0 14px; }
+  .sig-page th { text-transform: none; font-size: 12px; }
+  .sig-page a { text-decoration: none; }
+  .sig-page a:hover { text-decoration: underline; }
+  .sig-page :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .muted { color: var(--muted); }
+  .rise { color: var(--rise); }
+  .drop { color: var(--drop); }
+  .num { text-align: right; white-space: nowrap; }
+  .pill { display: inline-block; font-size: 12px; line-height: 1.4; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
+  .pill.rise { border-color: rgba(63, 185, 80, 0.5); color: var(--rise); background: rgba(63, 185, 80, 0.08); }
+  .pill.drop { border-color: rgba(244, 112, 103, 0.5); color: var(--drop); background: rgba(244, 112, 103, 0.08); }
+  .arrow { font-size: 11px; margin-right: 3px; }
+  /* signal arrows: blue = rise signal, pink = drop signal (green/red are for price and money) */
+  .arrow.up { color: #58a6ff; }
+  .arrow.down { color: #f778ba; }
+  .whose { font-size: 12px; color: var(--muted); }
+  details.fold { border-top: 1px solid var(--line); }
+  details.fold:last-of-type { border-bottom: 1px solid var(--line); }
+  details.fold > summary { cursor: pointer; list-style: none; padding: 14px 4px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  details.fold > summary::-webkit-details-marker { display: none; }
+  details.fold > summary::before { content: "\25B8"; color: var(--muted); font-size: 12px; transition: transform 0.15s; }
+  details.fold[open] > summary::before { transform: rotate(90deg); }
+  details.fold > summary:hover { background: rgba(255, 255, 255, 0.02); }
+  details.fold .fold-body { padding: 0 4px 18px 24px; }
+  @media (prefers-reduced-motion: reduce) { details.fold > summary::before { transition: none; } }
+  .modal-back { position: fixed; inset: 0; background: rgba(1, 4, 9, 0.75); display: flex; align-items: flex-start; justify-content: center; z-index: 50; padding: 40px 16px; overflow-y: auto; }
+  .modal { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; width: 100%; max-width: 1100px; padding: 16px 18px; }
+  .modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .modal-head h3 { margin: 0; font-size: 18px; }
+  .modal-close { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 6px; font-size: 16px; line-height: 1; padding: 4px 9px; cursor: pointer; }
+  .plot-lg { height: 460px; margin-top: 8px; }
+  @media (max-width: 700px) {
+    body.sig-page { padding: 16px; }
+    .sig-page h1 { font-size: 24px; }
+    .plot-lg { height: 340px; }
+    .modal-back { padding: 12px 8px; }
+    .modal { padding: 10px; }
+    .hide-sm { display: none; }
+    details.fold .fold-body { padding-left: 4px; }
+  }
+  .tv-box { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .tv-legend { position: absolute; top: 6px; left: 8px; right: 70px; z-index: 3; pointer-events: none; font-size: 12px; color: var(--muted); }
+  .tv-readout { line-height: 1.5; }
+  .tv-readout b { color: var(--text); font-weight: 600; margin-right: 6px; }
+  .tv-readout span { margin-right: 6px; }
+  .tv-keys { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; pointer-events: auto; }
+  .tv-key { background: rgba(22, 27, 34, 0.85); border: 1px solid var(--line); border-radius: 6px; color: var(--muted); font: inherit; font-size: 11.5px; padding: 1px 7px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: line-through; }
+  .tv-key.on { color: var(--text); text-decoration: none; }
+  .tv-key i { width: 10px; height: 2px; display: inline-block; }
+  .tv-vp { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2; }

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Market Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly.min.js"></script>
+<style>
+{% include "_base_styles.html" %}
+</style>
+</head>
+<body>
+
+{% set active = 'overview' %}{% include "_tabs.html" %}
+
+<header>
+  <div>
+    <h1>Market Dashboard</h1>
+    <div class="meta" id="lastUpdated"
+      data-oldest-ts="{{ oldest_ts or '' }}">Loading last-updated time...</div>
+  </div>
+  <div style="text-align:right;">
+    <button id="refreshBtn" onclick="refreshData()">Refresh now</button>
+    <div class="meta" style="margin-top:4px;">Updates itself while the bot is running: weekdays at 12am, 8am and 5pm
+      Eastern. The S&amp;P 500 studies change once a day, after the 5pm close.</div>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- Fear & Greed -->
+  <div class="card">
+    <h2>Fear &amp; Greed Index <a href="https://www.cnn.com/markets/fear-and-greed" target="_blank">CNN &rarr;</a></h2>
+    {% if fear_greed.get('score') is not none %}
+    <div class="fg-gauge-wrap">
+      <svg viewBox="0 0 200 110" width="180" height="99">
+        <path d="M 10 100 A 90 90 0 0 1 190 100" fill="none" stroke="#2a323d" stroke-width="16"/>
+        <path id="fgArc" d="M 10 100 A 90 90 0 0 1 190 100" fill="none" stroke="var(--accent)" stroke-width="16"
+          stroke-dasharray="{{ (fear_greed.score / 100 * 283) | round(1) }} 283"/>
+        <text x="100" y="80" text-anchor="middle" font-size="34" fill="var(--text)" font-weight="700">{{ fear_greed.score | round(0) | int }}</text>
+        <text x="100" y="100" text-anchor="middle" font-size="12" fill="var(--muted)" text-transform="uppercase">{{ fear_greed.rating | upper }}</text>
+      </svg>
+      <div>
+        <canvas id="fgHistChart" width="220" height="90"></canvas>
+      </div>
+    </div>
+    <div class="fg-history-row">
+      <div>Prev close <b>{{ fear_greed.previous_close }}</b></div>
+      <div>1 week ago <b>{{ fear_greed.previous_1_week }}</b></div>
+      <div>1 month ago <b>{{ fear_greed.previous_1_month }}</b></div>
+      <div>1 year ago <b>{{ fear_greed.previous_1_year }}</b></div>
+    </div>
+    {% else %}
+    <p class="sub-stat">No data yet — click Refresh Data.</p>
+    {% endif %}
+  </div>
+
+  <!-- VIX -->
+  <div class="card">
+    <h2>VIX &amp; S&amp;P 500
+      <a href="https://finance.yahoo.com/quote/%5EVIX/" target="_blank">Yahoo Finance &rarr;</a>
+    </h2>
+    {% if vix.get('vix') %}
+    <div style="display:flex; gap:28px; align-items:baseline;">
+      <div>
+        <div class="big-stat">{{ vix.vix.latest }}</div>
+        <div class="sub-stat {{ 'pct-up' if vix.vix.pct_change >= 0 else 'pct-down' }}">
+          VIX {{ '+' if vix.vix.pct_change >= 0 else '' }}{{ vix.vix.pct_change }}%
+        </div>
+      </div>
+      <div>
+        <div class="big-stat" style="font-size:26px;">{{ vix.spx.latest }}</div>
+        <div class="sub-stat {{ 'pct-up' if vix.spx.pct_change >= 0 else 'pct-down' }}">
+          S&amp;P {{ '+' if vix.spx.pct_change >= 0 else '' }}{{ vix.spx.pct_change }}%
+        </div>
+      </div>
+    </div>
+    <p class="sub-stat">Higher VIX = more fear/hedging demand pushing options prices up. Some use spikes as a signal for how much to deploy.</p>
+    <canvas id="vixChart" height="90"></canvas>
+    {% else %}
+    <p class="sub-stat">No data yet — click Refresh Data.</p>
+    {% endif %}
+  </div>
+
+  <!-- Heatmap -->
+  <div class="card full">
+    <h2>S&amp;P 500 — 1 Day Performance
+      <span>
+        <span class="meta" style="font-weight:400;">(built from live Yahoo Finance data, by sector &amp; market cap)</span>
+        &nbsp;<a href="https://finviz.com/map.ashx?t=sec" target="_blank">Finviz live map &rarr;</a>
+      </span>
+    </h2>
+    <div id="heatmapDiv"></div>
+  </div>
+
+  <!-- CME FedWatch (self-computed) -->
+  <div class="card full">
+    <h2>FedWatch — FOMC Rate Probabilities (self-computed)
+      <span>
+        <a href="https://finance.yahoo.com/quote/ZQ%3DF/" target="_blank">Yahoo Finance (data) &rarr;</a>
+        &nbsp;<a href="https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html" target="_blank">CME FedWatch (verify) &rarr;</a>
+      </span>
+    </h2>
+    <p class="sub-stat" style="margin-bottom:10px;">
+      Not CME's own feed — computed here from live Fed Funds futures prices (30-Day Fed Funds,
+      ticker <code>ZQ</code>) using CME's published "Aggregated" methodology: each future month's
+      contract compared against today's target rate. Validated against a real FedWatch screenshot:
+      exact on meetings followed by a full calendar month with no other meeting in it; within a few
+      points elsewhere, where a shared month has to be split into before/after the meeting. On the
+      live tool this is the <b>Target Rate &rarr; Aggregated</b> view — use the CME link above to
+      cross-check.
+    </p>
+    {% if fedwatch.get('meetings') %}
+    <p class="sub-stat" style="margin-bottom:10px;">Current target: <b>{{ fedwatch.current_target }}</b> &middot; EFFR: <b>{{ fedwatch.effr }}</b></p>
+    <div class="scroll-x">
+    <table class="fedwatch-matrix">
+      <tr><th>Meeting Date</th>{% for col in fedwatch.columns %}<th>{{ col }}</th>{% endfor %}</tr>
+      {% for m in fedwatch.meetings %}
+      <tr>
+        <td>{{ m.date_label }}</td>
+        {% for c in m.cells %}
+        <td class="{{ 'fw-blue' if c.highlight == 'blue' else 'fw-yellow' if c.highlight == 'yellow' else '' }}">{{ '%.2f' | format(c.probability) }}%</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+    {% else %}
+    <p class="sub-stat">No data yet — click Refresh Data.</p>
+    {% endif %}
+  </div>
+
+  <!-- Briefing.com -->
+  <div class="card link-out-card">
+    <h2 style="width:100%;">Briefing.com — Latest Comments</h2>
+    {% if briefing.get('headlines') %}
+      {% for h in briefing.headlines %}
+      <div class="headline">{{ h }}</div>
+      {% endfor %}
+    {% else %}
+      <p class="sub-stat">No data yet — click Refresh Data.</p>
+    {% endif %}
+    <a class="btn" href="https://www.briefing.com/" target="_blank">Open Briefing.com &rarr;</a>
+  </div>
+
+  <!-- Economic calendar: PPI / CPI only -->
+  <div class="card">
+    <h2>PPI / CPI Watch</h2>
+    <div class="sub-stat" style="margin-bottom:10px;">
+      Source: <a href="https://fred.stlouisfed.org/series/CPIAUCSL" target="_blank">FRED (CPI)</a>
+      &middot; <a href="https://fred.stlouisfed.org/series/PPIFIS" target="_blank">FRED (PPI)</a>
+      &middot; <a href="https://www.forexfactory.com/calendar" target="_blank">ForexFactory (forecast/schedule)</a>
+    </div>
+    {% if econ.get('fred_actuals') %}
+    <div class="fg-history-row" style="margin-bottom:10px;">
+      {% for label, val in econ.fred_actuals.items() %}
+        {% if val %}
+        <div>{{ label }}<br>(latest, {{ val.date }}) <b>{{ '+' if val.value >= 0 else '' }}{{ val.value }}%</b></div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <p class="sub-stat" style="margin-bottom:10px;">Rule of thumb: readings at/above +0.4% m/m read hawkish (more production/inflation, less pressure to cut); +0.2&ndash;0.3% reads more dovish (room to cut and support growth). Not a guarantee, just a lean.</p>
+    {% endif %}
+    {% if econ.get('upcoming') %}
+    <table>
+      <tr><th>Date</th><th>Time</th><th>Event</th><th>Forecast</th><th>Previous</th></tr>
+      {% for ev in econ.upcoming %}
+      <tr class="highlight">
+        <td>{{ ev.date }}</td><td>{{ ev.time }}</td><td>{{ ev.title }}</td>
+        <td>{{ ev.forecast }}</td><td>{{ ev.previous }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="sub-stat">No PPI/CPI release scheduled this week.</p>
+    {% endif %}
+    {% if not econ.get('fred_actuals') %}<p class="sub-stat">No data yet — click Refresh Data.</p>{% endif %}
+  </div>
+
+  <!-- Earnings calendar -->
+  <div class="card full">
+    <h2>
+      <span>
+        Earnings —
+        <span id="earningsRangeLabel">{{ earnings.get('next_week', {}).get('range', 'next 7 days') }}</span>
+      </span>
+      <span>
+        <button class="toggle-btn active" id="btnNextWeek" onclick="showEarnings('next_week')">Next Week</button>
+        <button class="toggle-btn" id="btnLastWeek" onclick="showEarnings('last_week')">Last Week</button>
+        &nbsp;<a href="https://finance.yahoo.com/calendar/earnings" target="_blank">Yahoo Finance &rarr;</a>
+      </span>
+    </h2>
+    <div class="scroll-y">
+    <table id="earningsTable">
+      <tr><th>Date</th><th>Symbol</th><th>Company</th><th>Call Time</th><th>EPS Est.</th><th>Reported EPS</th><th>Surprise</th><th>Market Cap</th></tr>
+    </table>
+    <p class="sub-stat" id="earningsEmpty" hidden>No data yet — click Refresh Data.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const heatmapStocks = {{ heatmap.get('stocks', []) | tojson }};
+const vixHistory = {{ vix.get('vix', {}).get('history', []) | tojson }};
+const fgHistory = {{ fear_greed.get('history', []) | tojson }};
+const oldestTs = {{ oldest_ts | tojson }};
+const earningsData = {
+  next_week: {{ earnings.get('next_week', {'range': '', 'companies': []}) | tojson }},
+  last_week: {{ earnings.get('last_week', {'range': '', 'companies': []}) | tojson }}
+};
+
+function showEarnings(which) {
+  const block = earningsData[which] || { range: '', companies: [] };
+  document.getElementById('earningsRangeLabel').textContent = block.range || '';
+  document.getElementById('btnNextWeek').classList.toggle('active', which === 'next_week');
+  document.getElementById('btnLastWeek').classList.toggle('active', which === 'last_week');
+
+  const table = document.getElementById('earningsTable');
+  table.querySelectorAll('tr.data-row').forEach(el => el.remove());
+  const emptyMsg = document.getElementById('earningsEmpty');
+
+  if (!block.companies || !block.companies.length) {
+    emptyMsg.hidden = false;
+    return;
+  }
+  emptyMsg.hidden = true;
+  for (const c of block.companies) {
+    const tr = document.createElement('tr');
+    tr.className = 'data-row';
+    tr.innerHTML = `<td>${c.date_label || ''}</td><td><b>${c.symbol}</b></td><td>${c.company}</td>` +
+      `<td>${c.call_time}</td><td>${c.eps_estimate}</td><td>${c.reported_eps}</td>` +
+      `<td>${c.surprise_pct}</td><td>${c.market_cap}</td>`;
+    table.appendChild(tr);
+  }
+}
+showEarnings('next_week');
+
+// last updated
+(function() {
+  const el = document.getElementById('lastUpdated');
+  if (!oldestTs) { el.textContent = 'No data yet — click Refresh Data to pull everything.'; return; }
+  const d = new Date(oldestTs * 1000);
+  el.textContent = 'Oldest data as of: ' + d.toLocaleString();
+})();
+
+// VIX chart
+if (vixHistory.length) {
+  new Chart(document.getElementById('vixChart'), {
+    type: 'line',
+    data: {
+      labels: vixHistory.map(p => p.date),
+      datasets: [{ data: vixHistory.map(p => p.close), borderColor: '#58a6ff', pointRadius: 0, tension: 0.15 }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { x: { display: false }, y: { ticks: { color: '#8b949e' }, grid: { color: '#2a323d' } } }
+    }
+  });
+}
+
+// Fear & Greed history sparkline
+if (fgHistory.length) {
+  new Chart(document.getElementById('fgHistChart'), {
+    type: 'line',
+    data: {
+      labels: fgHistory.map(p => p.date),
+      datasets: [{ data: fgHistory.map(p => p.score), borderColor: '#f0883e', pointRadius: 0, tension: 0.15 }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: { x: { display: false }, y: { min: 0, max: 100, display: false } }
+    }
+  });
+}
+
+// Heatmap treemap
+if (heatmapStocks.length) {
+  const labels = heatmapStocks.map(s => s.ticker);
+  const parents = heatmapStocks.map(s => s.sector);
+  const values = heatmapStocks.map(s => s.market_cap);
+  const colors = heatmapStocks.map(s => s.pct_change);
+  const text = heatmapStocks.map(s => `${s.ticker}<br>${s.pct_change > 0 ? '+' : ''}${s.pct_change}%`);
+  const sectors = [...new Set(parents)];
+
+  Plotly.newPlot('heatmapDiv', [{
+    type: 'treemap',
+    labels: labels.concat(sectors),
+    parents: parents.concat(sectors.map(() => '')),
+    values: values.concat(sectors.map(sec => heatmapStocks.filter(s => s.sector === sec).reduce((a,s) => a + s.market_cap, 0))),
+    text: text.concat(sectors.map(() => '')),
+    textinfo: 'text',
+    marker: {
+      colors: colors.concat(sectors.map(() => 0)),
+      colorscale: [[0, '#da3633'], [0.5, '#3a3f4b'], [1, '#2ea043']],
+      cmid: 0,
+      cmin: -5,
+      cmax: 5,
+      line: { width: 1, color: '#0d1117' }
+    },
+    pathbar: { visible: true, textfont: { color: '#e6edf3' } },
+    branchvalues: 'total'
+  }], {
+    paper_bgcolor: '#161b22',
+    plot_bgcolor: '#161b22',
+    font: { color: '#e6edf3', size: 11 },
+    margin: { l: 4, r: 4, t: 28, b: 4 }
+  }, { displayModeBar: false, responsive: true });
+}
+
+function refreshData() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.textContent = 'Refreshing...';
+  fetch('refresh', { method: 'POST' }).then(() => {
+    const poll = () => fetch('refresh/status').then(r => r.json()).then(st => {
+      if (st.running) return setTimeout(poll, 3000);
+      location.reload();
+    });
+    setTimeout(poll, 2000);
+  }).catch(() => { btn.disabled = false; btn.textContent = 'Refresh now'; alert('Refresh failed. Check the terminal running the bot.'); });
+}
+</script>
+
+</body>
+</html>

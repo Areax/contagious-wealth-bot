@@ -34,8 +34,13 @@ from engine.generated_universes import (
     rename_universe,
     save_universe,
 )
+from market import refresh as market_refresh
+from market.routes import bp as market_bp
 
 app = Flask(__name__)
+# Market overview, Sectors, Stock lookup and Signal combos pages (moved here
+# from the market-dashboard project), served under /market/.
+app.register_blueprint(market_bp)
 
 # Remembers the last scan you actually ran (mode/universe/limit/custom
 # list) so a server restart resumes where you left off instead of always
@@ -760,6 +765,7 @@ INDEX_HTML = """<!doctype html>
   .filterbar details.columns .controls { margin-top: 6px; }
   .tabs { display: flex; gap: 22px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
   .tab { padding: 8px 2px 10px; border: none; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; font-family: inherit; }
+  a.tab { text-decoration: none; }
   .tab.active { color: inherit; border-bottom-color: var(--accent); font-weight: 600; }
   .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; margin: 1px 4px 1px 0; white-space: nowrap; }
   .badge.bullish { background: #dcfce7; color: #166534; }
@@ -873,6 +879,10 @@ INDEX_HTML = """<!doctype html>
   <nav class="tabs">
     <button class="tab active" id="tabBtnPut" onclick="showTab('put')">Put finder</button>
     <button class="tab" id="tabBtnSectors" onclick="showTab('sectors')">Sector signals</button>
+    <a class="tab" href="/market/">Market overview</a>
+    <a class="tab" href="/market/sectors.html">Sectors</a>
+    <a class="tab" href="/market/stock.html">Stock lookup</a>
+    <a class="tab" href="/market/combos.html">Signal combos</a>
   </nav>
   <div id="tabPut">
   <h1>Cash-Secured Puts</h1>
@@ -2476,6 +2486,7 @@ function renderSectors() {
 (function restoreTab() {
   let t = "put";
   try { t = localStorage.getItem("activeTab") || "put"; } catch (e) {}
+  if (location.hash === "#sectors" || location.hash === "#put") t = location.hash.slice(1);
   if (t === "sectors") showTab("sectors");
 })();
 
@@ -2518,6 +2529,7 @@ def run_dashboard(port: int = 8899, initial_limit: int | None = None):
         args = (initial_limit if initial_limit is not None else 50, None, "sp500", "general")
     t = threading.Thread(target=_run_scan, args=args, daemon=True)
     t.start()
+    market_refresh.start_scheduler()
     app.run(host="127.0.0.1", port=port, debug=False, threaded=True)
 
 

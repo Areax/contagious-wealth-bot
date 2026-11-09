@@ -1,0 +1,195 @@
+{%- macro rr(v) -%}<span class="{{ 'rise' if v > 0.005 else 'drop' if v < -0.005 else 'muted' }}">{{ '0.00' if v|abs < 0.005 else '%+.2f' % v }}R</span>{%- endmacro -%}
+{%- macro res(st, cls='') -%}
+{%- if not st -%}<td class="num muted {{ cls }}">0</td><td class="num {{ cls }}"></td><td class="num {{ cls }}"></td>
+{%- else -%}<td class="num {{ cls }}">{{ '{:,}'.format(st.n) }}</td><td class="num {{ cls }}">{{ '%.0f' % (st.win * 100) }}%</td><td class="num {{ cls }}">{{ rr(st.avg_r) }}</td>
+{%- endif -%}
+{%- endmacro -%}
+{%- macro names(keys, labels) -%}{% for k in keys %}{{ labels[k] }}{% if not loop.last %} <span class="plus">+</span> {% endif %}{% endfor %}{%- endmacro -%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signal Combos</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.1/plotly.min.js"></script>
+<style>
+{% include "_base_styles.html" %}
+{% include "_signal_styles.html" %}
+  .answer { font-size: 18px; line-height: 1.5; max-width: 70ch; margin: 0 0 8px; }
+  .small { font-size: 12.5px; color: var(--muted); line-height: 1.5; max-width: 80ch; }
+  .plus { color: var(--muted); }
+  table.combos td { vertical-align: top; padding: 8px 6px; }
+  table.combos th.grp { text-align: center; border-bottom: 1px solid var(--line); }
+  .period { color: var(--muted); font-weight: 400; }
+  .test { background: rgba(88, 166, 255, 0.05); }
+  #ladder { height: 340px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .chip { padding: 3px 9px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font-size: 13px; }
+  .chip:hover { border-color: var(--accent); text-decoration: none !important; }
+  ul.notes { color: var(--muted); font-size: 13px; line-height: 1.55; padding-left: 18px; max-width: 80ch; }
+</style>
+</head>
+<body class="sig-page">
+
+{% set active = 'combos' %}{% include "_tabs.html" %}
+
+<header>
+  <div>
+    <h1>Signal combos</h1>
+    <div class="meta">{% if combos.last_bar %}Prices to the {{ combos.last_bar }} close.{% else %}No data yet: the bot fills this in a few minutes after it starts.{% endif %}</div>
+  </div>
+</header>
+
+{% if combos.long %}
+{% set L = combos.long %}{% set S = combos.short %}
+{% set labels = {} %}{% for c in L.checks %}{% set _ = labels.update({c.key: c.label}) %}{% endfor %}
+{% set slabels = {} %}{% for c in S.checks %}{% set _ = slabels.update({c.key: c.label}) %}{% endfor %}
+{% set held = L.top|selectattr('test')|selectattr('test.avg_r', 'gt', 0)|list %}
+{% set best_test = (L.top + L.greedy)|selectattr('test')|sort(attribute='test.avg_r', reverse=True)|first %}
+
+<section>
+  {% set U = L.union %}
+  {% set B = L.baseline.test %}
+  <p class="answer">{% if U and U.test and B and U.test.avg_r > B.avg_r %}Combining checks helped a little but did not produce a reliable money-maker.{% else %}Combining checks did not beat buying on a random day.{% endif %}
+    {% if U and U.test %}Trading all {{ L.top|length }} top combinations together on {{ combos.split[:4] }}&ndash;{{ combos.last_bar[:4] }}, data they were not
+    picked on: {{ '{:,}'.format(U.test.n) }} trades, won {{ '%.0f' % (U.test.win * 100) }}%, {{ rr(U.test.avg_r) }} a trade.
+    {% if B %}Buying on a random day: {{ rr(B.avg_r) }} a trade.{% endif %}
+    {% if U.test.avg_r > 0 and U.test.z is not none and U.test.z < 2 %}Positive, but small enough to be luck.{% elif U.test.avg_r <= 0 %}A losing result.{% endif %}{% endif %}</p>
+  <p class="small">Every trade uses the same rule as the rest of the site: buy when price breaks the signal day's high within 3 days
+    (short: its low), stop at the other end of that candle (at least half a typical day's range away), take profit at 1.2&times; the risk, close after 20 trading days, 0.2% cost. Combinations
+    were picked using {{ combos.start[:4] }}&ndash;2024 only ("picked on"), then checked on {{ combos.split[:4] }}&ndash;{{ combos.last_bar[:4] }},
+    data they never saw ("checked on"). Only the "checked on" column is an honest guess at future results.</p>
+</section>
+
+<section>
+  <h2>Does more agreement help?</h2>
+  <p class="lede">A bot that buys any of these stocks when at least this many of the {{ L.checks|length }} rise checks agree, one trade
+    per stock at a time.</p>
+  <div id="ladder"></div>
+  <p class="small">Up to about 10 checks, more agreement changed nothing: every level lost about as much as buying on a random day.
+    Above that, trades get rare. Hollow points have fewer than 100 trades, too few to tell skill from luck, and points with fewer than
+    10 are left off. With this rule a trade has to win about half the time just to break even after costs.</p>
+</section>
+
+<section>
+  <h2>Building a combination one check at a time</h2>
+  <p class="lede">Each step adds the check that most improved the 2021&ndash;2024 results.</p>
+  <div class="scroll-x">
+  <table class="combos">
+    <tr><th></th><th></th><th class="grp" colspan="3">Picked on <span class="period">{{ combos.start[:4] }}&ndash;2024</span></th><th class="grp test" colspan="3">Checked on <span class="period">{{ combos.split[:4] }}&ndash;{{ combos.last_bar[:4] }}</span></th></tr>
+    <tr><th>Step</th><th>Check added</th><th class="num">Trades</th><th class="num">Won</th><th class="num">Avg</th><th class="num test">Trades</th><th class="num test">Won</th><th class="num test">Avg</th></tr>
+    {% for g in L.greedy if g.checks %}
+    <tr><td class="num muted">{{ loop.index }}</td><td>{{ labels[g.checks[-1]] }}</td>{{ res(g.train) }}{{ res(g.test, 'test') }}</tr>
+    {% endfor %}
+  </table>
+  </div>
+  <p class="small">Adding checks keeps improving the period it was chosen on; that's what choosing does. The checked-on column is
+    the one that matters.</p>
+</section>
+
+<section>
+  <h2>Top {{ L.top|length }} combinations</h2>
+  <p class="lede">The best of {{ '{:,}'.format(L.n_combos) }} combinations of up to {{ combos.max_combo }} checks with at least
+    {{ combos.min_train_trades }} trades in 2021&ndash;2024. {{ held|length }} of {{ L.top|length }} stayed profitable afterwards.</p>
+  <div class="scroll-x">
+  <table class="combos">
+    <tr><th></th><th class="grp" colspan="3">Picked on <span class="period">{{ combos.start[:4] }}&ndash;2024</span></th><th class="grp test" colspan="3">Checked on <span class="period">{{ combos.split[:4] }}&ndash;{{ combos.last_bar[:4] }}</span></th></tr>
+    <tr><th>Combination</th><th class="num">Trades</th><th class="num">Won</th><th class="num">Avg</th><th class="num test">Trades</th><th class="num test">Won</th><th class="num test">Avg</th></tr>
+    {% for t in L.top %}
+    <tr><td>{{ names(t.checks, labels) }}</td>{{ res(t.train) }}{{ res(t.test, 'test') }}</tr>
+    {% endfor %}
+  </table>
+  </div>
+</section>
+
+<section>
+  <h2>Matching today</h2>
+  {% set tl = combos.today.long or {} %}
+  {% set all_combos = L.top + L.greedy %}
+  <p class="lede">Stocks that meet a combination that stayed profitable on {{ combos.split[:4] }}&ndash;{{ combos.last_bar[:4] }}.
+    These held up for one stretch of time on a few dozen trades; treat them as worth a look, not as trades.</p>
+  {% set ns = namespace(any=false) %}
+  {% for c in all_combos if c.test and c.test.avg_r > 0 %}{% set i = all_combos.index(c) %}
+    {% set hits = [] %}{% for sym, row in tl|dictsort %}{% if i in row.combos %}{% set _ = hits.append(sym) %}{% endif %}{% endfor %}
+    {% if hits %}{% set ns.any = true %}
+    <div style="margin:0 0 12px;">
+      <div style="font-size:14px;">{{ names(c.checks, labels) }} <span class="muted" style="font-size:12.5px;">({{ rr(c.test.avg_r) }} a trade on {{ c.test.n }} trades)</span></div>
+      <div class="chips">{% for sym in hits %}<a class="chip" href="stock.html?s={{ sym }}">{{ sym }}</a>{% endfor %}</div>
+    </div>
+    {% endif %}
+  {% endfor %}
+  {% if not ns.any %}<p class="small">No stock meets any of them today.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Drop side</h2>
+  {% set sbest = (S.top + S.greedy)|selectattr('test')|sort(attribute='test.avg_r', reverse=True)|first %}
+  <p class="lede">Shorting lost money at every agreement level and in every combination checked on {{ combos.split[:4] }}&ndash;{{ combos.last_bar[:4] }}{% if sbest and sbest.test.avg_r > 0 %} except
+    {{ names(sbest.checks, slabels) }} ({{ rr(sbest.test.avg_r) }} on {{ sbest.test.n }} trades){% endif %}. These stocks mostly rose over the period, so
+    betting against them rarely paid.</p>
+</section>
+
+<section>
+  <details class="fold">
+    <summary><b>How this was tested</b></summary>
+    <div class="fold-body">
+      <ul class="notes">
+        <li>Every trading day for each of these stocks from {{ combos.start }} is a possible entry. A check is true
+          on a day using that day's close and earlier data only.</li>
+        <li>Rise checks: {{ L.checks|map(attribute='label')|join('; ') }}.</li>
+        <li>The bot holds one trade per stock at a time. A trade picked on 2021&ndash;2024 must close before {{ combos.split }}.</li>
+        <li>Combinations are screened on every matching day, then the top ones are rerun with the one-trade-at-a-time rule. A combination
+          that only adds checks that change almost nothing is skipped.</li>
+        <li>With thousands of combinations tried, some look great on the picking period by luck alone. That's why the picks are checked
+          on later data. A few dozen trades still leave a wide margin for luck.</li>
+        <li>Research on trading rules finds the same pattern: rules that look profitable in one period rarely survive a fair test on
+          another once the number of rules tried is accounted for (Sullivan, Timmermann and White, 1999; Bajgrowicz and Scaillet, 2012).</li>
+      </ul>
+    </div>
+  </details>
+</section>
+{% else %}
+<section><p class="lede">Combination results appear after the next data refresh.</p></section>
+{% endif %}
+
+<script>
+{% include "_chart_js.html" %}
+const LADDER = {{ (combos.long.ladder if combos.long else [])|tojson }};
+const RANDOM_DAY = {{ (combos.long.baseline.test.avg_r if combos.long and combos.long.baseline.test else none)|tojson }};
+(function () {
+  const el = document.getElementById('ladder');
+  if (!el || !LADDER.length || !window.Plotly) return;
+  const fmt = v => (v > 0.0049 ? '+' : v < -0.0049 ? '−' : '') + Math.abs(v).toFixed(2) + 'R';
+  // points with at least 10 trades; under 100 they're drawn hollow (too few to trust)
+  const pts = which => {
+    const rows = LADDER.filter(r => r[which] && r[which].n >= 10);
+    return { x: rows.map(r => r.k), y: rows.map(r => r[which].avg_r),
+      marker: { size: 9, symbol: rows.map(r => r[which].n >= 100 ? 'circle' : 'circle-open'), line: { width: 2 } },
+      customdata: rows.map(r => [fmt(r[which].avg_r), r[which].n.toLocaleString(), Math.round(r[which].win * 100),
+        (r[which].avg_r < 0 ? '−$' : '+$') + Math.abs(Math.round(r[which].avg_r * 100))]) };
+  };
+  const a = pts('train'), b = pts('test');
+  const hover = 'At least %{x} checks<br>%{customdata[0]} a trade (%{customdata[3]} per $100 risked)<br>%{customdata[1]} trades, won %{customdata[2]}%<extra>%{fullData.name}</extra>';
+  const ys = a.y.concat(b.y, RANDOM_DAY === null ? [] : [RANDOM_DAY], [0]);
+  const lo = Math.min(...ys), hi = Math.max(...ys), step = hi - lo > 0.6 ? 0.2 : hi - lo > 0.3 ? 0.1 : 0.05;
+  const ticks = [];
+  for (let v = Math.floor(lo / step) * step; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
+  const shapes = [], annotations = [];
+  if (RANDOM_DAY !== null) {
+    shapes.push({ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: RANDOM_DAY, y1: RANDOM_DAY, line: { color: DROP, width: 1, dash: 'dot' } });
+    annotations.push({ xref: 'paper', x: 0.99, y: RANDOM_DAY, yanchor: 'top', xanchor: 'right', showarrow: false,
+      text: 'Buying on a random day (' + fmt(RANDOM_DAY) + ')', font: { size: 11, color: DROP } });
+  }
+  annotations.push({ xref: 'paper', x: 0.99, y: 0, yanchor: 'top', xanchor: 'right', showarrow: false, text: 'Break-even', font: { size: 11, color: MUTED } });
+  Plotly.newPlot(el, [
+    { ...a, name: 'Picked on (2021-2024)', mode: 'lines+markers', line: { color: MUTED, dash: 'dash' }, marker: { ...a.marker, color: MUTED }, hovertemplate: hover },
+    { ...b, name: 'Checked on (2025-2026)', mode: 'lines+markers', line: { color: ACCENT, width: 2 }, marker: { ...b.marker, color: ACCENT }, hovertemplate: hover },
+  ], { ...THEME, margin: { l: 64, r: 12, t: 10, b: 44 }, hovermode: 'closest', shapes, annotations,
+    legend: { orientation: 'h', y: 1.12, x: 0 },
+    xaxis: { gridcolor: GRID, title: { text: 'Checks agreeing (at least)', font: { size: 11 } }, dtick: 1 },
+    yaxis: { gridcolor: GRID, zeroline: true, zerolinecolor: MUTED, zerolinewidth: 1, title: { text: 'Average per trade', font: { size: 11 }, standoff: 6 },
+      tickmode: 'array', tickvals: ticks, ticktext: ticks.map(fmt), range: [lo - step / 2, hi + step / 2] } }, PLOT_CONFIG);
+})();
+</script>
+</body>
+</html>

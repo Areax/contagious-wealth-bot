@@ -1,0 +1,423 @@
+// Shared chart helpers for the Sectors and Stock lookup pages.
+// Price charts use TradingView Lightweight Charts (zoom with the wheel or a
+// pinch, drag to pan). The small evidence charts on the Sectors page use Plotly.
+const THEME = { paper_bgcolor: '#161b22', plot_bgcolor: '#161b22', font: { color: '#e6edf3', size: 11 } };
+const GRID = '#2a323d', MUTED = '#8b949e', ACCENT = '#58a6ff', RISE = '#3fb950', DROP = '#f47067';
+// Signal arrows get their own colors so they never look like candles:
+// blue = a rise signal, pink = a drop signal. Green/red stay for price and money.
+const SIG_UP = '#58a6ff', SIG_DOWN = '#f778ba', PICKED = '#ffd33d';  // picked signal: yellow
+const PLOT_CONFIG = { displayModeBar: false, responsive: true };
+
+let chartData = null;
+function loadCharts() {
+  if (!chartData) {
+    chartData = fetch('sector_charts.json').then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+    chartData.catch(() => { chartData = null; });  // let a later click retry
+  }
+  return chartData;
+}
+
+// Averages drawn on every price chart: key, label, color, shown at start.
+const AVERAGES = [
+  ['ema9', '9-day EMA', '#c9d1d9', false],
+  ['ema21', '21-day EMA', '#e3b341', true],
+  ['sma50', '50-day SMA', '#39c5cf', true],
+  ['sma200', '200-day SMA', '#bc8cff', true],
+];
+
+// 9-day EMA and Bollinger Bands (20-day, 2 standard deviations) from the closes, skipping missing days.
+function emaOf(c, n) {
+  const out = c.map(() => null);
+  const idx = c.map((v, i) => v === null ? -1 : i).filter(i => i >= 0);
+  if (idx.length < n) return out;
+  let e = idx.slice(0, n).reduce((a, i) => a + c[i], 0) / n;
+  out[idx[n - 1]] = e;
+  const k = 2 / (n + 1);
+  for (let j = n; j < idx.length; j++) { e = k * c[idx[j]] + (1 - k) * e; out[idx[j]] = e; }
+  return out;
+}
+function bollinger(c, n, w) {
+  const up = c.map(() => null), lo = c.map(() => null), mid = c.map(() => null);
+  const idx = c.map((v, i) => v === null ? -1 : i).filter(i => i >= 0);
+  for (let j = n - 1; j < idx.length; j++) {
+    const win = idx.slice(j - n + 1, j + 1).map(i => c[i]);
+    const m = win.reduce((a, b) => a + b, 0) / n;
+    const sd = Math.sqrt(win.reduce((a, b) => a + (b - m) * (b - m), 0) / n);
+    up[idx[j]] = m + w * sd; lo[idx[j]] = m - w * sd; mid[idx[j]] = m;
+  }
+  return { up, lo, mid };
+}
+
+const pad2 = n => String(n).padStart(2, '0');
+function timeKey(t) {
+  if (!t) return null;
+  if (typeof t === 'string') return t;
+  if (typeof t === 'object') return t.year + '-' + pad2(t.month) + '-' + pad2(t.day);
+  const d = new Date(t * 1000);
+  return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
+}
+const escHtml = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const longDate = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+// Builds a candlestick chart in `box`. s holds o/h/l/c plus average arrays on
+// the shared `dates` calendar (null = no trade that day). Options:
+//   events + meta: signal markers; m10: the month-end 10-month average points;
+//   onPick(date): called when a candle is clicked.
+function priceChart(box, s, dates, opts) {
+  opts = opts || {};
+  box.innerHTML = '';
+  box.classList.add('tv-box');
+  if (!window.LightweightCharts) {
+    box.innerHTML = '<p class="muted" style="padding:16px;">The chart library did not load. Check your connection and reload.</p>';
+    return null;
+  }
+  const LC = window.LightweightCharts;
+  const chart = LC.createChart(box, {
+    autoSize: true,
+    layout: { background: { type: 'solid', color: '#161b22' }, textColor: MUTED, fontSize: 11 },
+    grid: { vertLines: { color: 'rgba(42,50,61,0.6)' }, horzLines: { color: 'rgba(42,50,61,0.6)' } },
+    crosshair: { mode: LC.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: GRID },
+    timeScale: { borderColor: GRID, rightOffset: 4, minBarSpacing: 2 },
+    // the wheel is handled below at a gentler speed than the library's own
+    handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
+    handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+  });
+  const at = {};
+  dates.forEach((d, i) => { at[d] = i; });
+  const candle = chart.addCandlestickSeries({
+    upColor: RISE, downColor: DROP, wickUpColor: RISE, wickDownColor: DROP, borderVisible: false,
+  });
+  const bars = [];
+  dates.forEach((d, i) => { if (s.c[i] !== null && s.o[i] !== null) bars.push({ time: d, open: s.o[i], high: s.h[i], low: s.l[i], close: s.c[i] }); });
+  candle.setData(bars);
+
+  const lineOpts = { lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+  const toPts = arr => dates.map((d, i) => arr[i] === null || arr[i] === undefined ? null : { time: d, value: arr[i] }).filter(Boolean);
+  const lines = [];   // each toggle: {label, color, on, set(visible)}
+  const toggle = (label, color, on, series) => {
+    series.forEach(x => x.applyOptions({ visible: on }));
+    lines.push({ label, color, on, set: v => series.forEach(x => x.applyOptions({ visible: v })) });
+  };
+
+  // volume bars along the bottom, on their own scale
+  if (s.v) {
+    const vol = chart.addHistogramSeries({ priceScaleId: 'vol', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false });
+    chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
+    vol.setData(dates.map((d, i) => s.v[i] === null || s.c[i] === null ? null : { time: d, value: s.v[i],
+      color: s.c[i] >= s.o[i] ? 'rgba(63,185,80,0.35)' : 'rgba(244,112,103,0.35)' }).filter(Boolean));
+    toggle('Volume', 'rgba(139,148,158,0.7)', true, [vol]);
+  }
+  const series9 = { ema9: emaOf(s.c, 9) };
+  AVERAGES.forEach(([key, label, color, on]) => {
+    const arr = s[key] || series9[key];
+    if (!arr) return;
+    const line = chart.addLineSeries({ ...lineOpts, color });
+    line.setData(toPts(arr));
+    toggle(label, color, on, [line]);
+  });
+  {
+    const bb = bollinger(s.c, 20, 2);
+    const bOpts = { ...lineOpts, color: 'rgba(201,209,217,0.45)', lineStyle: LC.LineStyle.Dashed };
+    const bands = [chart.addLineSeries(bOpts), chart.addLineSeries(bOpts), chart.addLineSeries({ ...bOpts, lineStyle: LC.LineStyle.Dotted })];
+    bands[0].setData(toPts(bb.up)); bands[1].setData(toPts(bb.lo)); bands[2].setData(toPts(bb.mid));
+    toggle('Bollinger Bands', 'rgba(201,209,217,0.6)', false, bands);
+  }
+  if (opts.m10 && s.m10 && s.m10.length) {
+    const series = chart.addLineSeries({ ...lineOpts, color: '#8b949e', lineStyle: LC.LineStyle.Dotted, lineType: LC.LineType.WithSteps });
+    series.setData(s.m10.map(p => ({ time: p.date, value: p.v })));
+    toggle('10-month average (checked monthly)', '#8b949e', false, [series]);
+  }
+
+  // trade levels for a picked signal: price labels on the axis only; the
+  // zones themselves are shaded on a canvas from entry day to exit day
+  let tradeLabels = [];
+  // chart patterns: the swing points and the breakout line of a picked double top/bottom or head & shoulders
+  const shapeLine = chart.addLineSeries({ ...lineOpts, color: '#e6edf3', lineWidth: 2, lineStyle: LC.LineStyle.Dashed, pointMarkersVisible: true });
+  const neckLine = chart.addLineSeries({ ...lineOpts, color: '#e6edf3', lineWidth: 1 });
+
+  const meta = opts.meta || {};
+  const events = (opts.events || []).filter(e => meta[e.key] && at[e.date] !== undefined);
+  const byDate = {};
+  events.forEach(e => { (byDate[e.date] = byDate[e.date] || []).push(e); });
+  let picked = null;
+  function drawMarkers() {
+    const marks = events.map(e => {
+      const up = meta[e.key].direction > 0, on = e.date === picked;
+      return { time: e.date, position: up ? 'belowBar' : 'aboveBar', color: on ? PICKED : up ? SIG_UP : SIG_DOWN,
+        shape: up ? 'arrowUp' : 'arrowDown', size: on ? 2 : 1 };
+    });
+    if (picked && opts.pickedTrade && opts.pickedTrade.exit_date && opts.pickedTrade.result !== 'open') {
+      const t = opts.pickedTrade;
+      marks.push({ time: t.exit_date, position: 'inBar', color: '#e6edf3', shape: 'circle', size: 0.6 });
+    }
+    candle.setMarkers(marks.sort((a, b) => a.time.localeCompare(b.time)));
+  }
+  drawMarkers();
+
+  // Canvases over the chart for drawings the library has no shape for.
+  // Each redraws when the view moves or the box resizes.
+  const overlays = [];
+  const redrawAll = () => overlays.forEach(o => o.redraw());
+  function overlay(z, paint) {
+    const cv = document.createElement('canvas');
+    cv.className = 'tv-vp';
+    cv.style.zIndex = z;
+    box.appendChild(cv);
+    let queued = false;
+    const draw = () => {
+      queued = false;
+      const ctx = cv.getContext('2d'), dpr = window.devicePixelRatio || 1;
+      const w = box.clientWidth, h = box.clientHeight;
+      cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      paint(ctx, w, h);
+    };
+    // next frame, with a timer as backup for tabs that pause animation frames
+    const once = () => { if (queued) draw(); };
+    const o = { redraw: () => { if (!queued) { queued = true; requestAnimationFrame(once); setTimeout(once, 60); } } };
+    overlays.push(o);
+    return o;
+  }
+  chart.timeScale().subscribeVisibleLogicalRangeChange(redrawAll);
+  if (window.ResizeObserver) new ResizeObserver(redrawAll).observe(box);
+  box.addEventListener('pointermove', e => { if (e.buttons) redrawAll(); });
+
+  // Wheel: up/down zooms around the cursor, sideways pans. About 12% per
+  // mouse-wheel notch, so a trackpad swipe doesn't jump months at a time.
+  const barAt = {};
+  bars.forEach((b, j) => { barAt[b.time] = j; });
+  box.addEventListener('wheel', ev => {
+    const ts = chart.timeScale(), r = ts.getVisibleLogicalRange();
+    if (!r) return;
+    ev.preventDefault();
+    const unit = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? box.clientHeight : 1;
+    const dx = ev.deltaX * unit, dy = ev.deltaY * unit, span = r.to - r.from;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      const shift = dx / box.clientWidth * span;
+      ts.setVisibleLogicalRange({ from: r.from + shift, to: r.to + shift });
+      return;
+    }
+    const f = Math.exp(Math.max(-0.5, Math.min(0.5, dy * (ev.ctrlKey ? 0.01 : 0.0012))));
+    const next = Math.max(10, Math.min(bars.length + 20, span * f)), k = next / span;
+    const x = ev.clientX - box.getBoundingClientRect().left;
+    let mid = ts.coordinateToLogical(x);
+    if (mid === null || mid > r.to) mid = r.to;
+    ts.setVisibleLogicalRange({ from: mid - (mid - r.from) * k, to: mid + (r.to - mid) * k });
+  }, { passive: false });
+
+  // Price gaps (s.gaps): a ring around the two candles that left the gap,
+  // and a band from there until price came back to fill it. Open gaps run
+  // to the right edge; filled ones are fainter and stop at the fill day.
+  // One color for both directions: these are things to watch, not signals.
+  const GAP = '240,136,62';
+  let gapsOn = !!(s.gaps && s.gaps.length);
+  const gapLayer = overlay(1, (ctx, w) => {
+    if (!gapsOn || !s.gaps) return;
+    const ts = chart.timeScale(), right = w - chart.priceScale('right').width();
+    const half = ts.options().barSpacing / 2;
+    s.gaps.forEach(g => {
+      const ia = barAt[g.a], ib = barAt[g.b];
+      if (ib === undefined) return;
+      const iz = g.filled && barAt[g.filled] !== undefined ? barAt[g.filled] : null;
+      const xb = ts.logicalToCoordinate(ib), xz = iz === null ? right : ts.logicalToCoordinate(iz);
+      const yt = candle.priceToCoordinate(g.top), yb = candle.priceToCoordinate(g.bottom);
+      if (xb === null || xz === null || yt === null || yb === null) return;
+      const open = !g.filled, a = Math.max(0, xb - half), b = Math.min(right, iz === null ? right : xz + half);
+      if (b > a) {
+        ctx.fillStyle = 'rgba(' + GAP + ',' + (open ? 0.16 : 0.07) + ')';
+        ctx.fillRect(a, yt, b - a, yb - yt);
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(' + GAP + ',' + (open ? 0.9 : 0.4) + ')';
+        ctx.beginPath(); ctx.moveTo(a, yt); ctx.lineTo(b, yt); ctx.moveTo(a, yb); ctx.lineTo(b, yb); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // ring around the two candles
+      const xa = ia === undefined ? null : ts.logicalToCoordinate(ia);
+      if (xa === null || xa < -40 || xb > right + 40) return;
+      const ya = [s.h[at[g.a]], s.l[at[g.a]], s.h[at[g.b]], s.l[at[g.b]]].map(v => candle.priceToCoordinate(v));
+      if (ya.some(v => v === null)) return;
+      const top = Math.min(...ya), bot = Math.max(...ya);
+      ctx.strokeStyle = 'rgba(' + GAP + ',' + (open ? 1 : 0.5) + ')';
+      ctx.lineWidth = open ? 2 : 1.25;
+      ctx.beginPath();
+      ctx.ellipse((xa + xb) / 2, (top + bot) / 2, (xb - xa) / 2 + half + 6, (bot - top) / 2 + 8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+  });
+  if (s.gaps && s.gaps.length) lines.push({ label: 'Price gaps', color: 'rgb(' + GAP + ')', on: true, set: v => { gapsOn = v; gapLayer.redraw(); } });
+
+  // The picked signal's candle: a yellow column top to bottom so it stands
+  // out even zoomed all the way out.
+  const pickLayer = overlay(1, (ctx, w, h) => {
+    const i = picked ? barAt[picked] : undefined;
+    if (i === undefined) return;
+    const ts = chart.timeScale(), x = ts.logicalToCoordinate(i);
+    const right = w - chart.priceScale('right').width();
+    if (x === null || x < 0 || x > right) return;
+    const half = Math.max(5, ts.options().barSpacing * 0.7);
+    ctx.fillStyle = 'rgba(255, 211, 61, 0.13)';
+    ctx.fillRect(x - half, 0, half * 2, h);
+    ctx.strokeStyle = 'rgba(255, 211, 61, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x - half + 0.5, 0); ctx.lineTo(x - half + 0.5, h); ctx.moveTo(x + half - 0.5, 0); ctx.lineTo(x + half - 0.5, h); ctx.stroke();
+  });
+
+  // The picked trade: green from entry to target, red from entry to stop,
+  // from the entry candle to the exit candle. Edges get a dark outline so
+  // they stand apart from the candles.
+  let zone = null;
+  const tradeLayer = overlay(2, (ctx, w) => {
+    if (!zone) return;
+    const ts = chart.timeScale(), right = w - chart.priceScale('right').width();
+    // logicalToCoordinate only takes whole bars: widen by half a bar by hand
+    const half = ts.options().barSpacing / 2;
+    let x0 = ts.logicalToCoordinate(zone.from), x1 = ts.logicalToCoordinate(zone.to);
+    if (x0 !== null) x0 -= half;
+    if (x1 !== null) x1 += half;
+    const y = v => candle.priceToCoordinate(v);
+    const yE = y(zone.entry), yT = y(zone.target), yS = y(zone.stop);
+    if (x0 === null || x1 === null || yE === null || yT === null || yS === null) return;
+    const a = Math.max(0, x0), b = Math.min(right, x1);
+    if (b <= a) return;
+    ctx.fillStyle = 'rgba(63,185,80,0.16)';
+    ctx.fillRect(a, Math.min(yE, yT), b - a, Math.abs(yT - yE));
+    ctx.fillStyle = 'rgba(244,112,103,0.16)';
+    ctx.fillRect(a, Math.min(yE, yS), b - a, Math.abs(yS - yE));
+    const edge = (yy, color, dash) => {
+      ctx.setLineDash([]); ctx.strokeStyle = 'rgba(1,4,9,0.9)'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(a, yy); ctx.lineTo(b, yy); ctx.stroke();
+      ctx.setLineDash(dash); ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(a, yy); ctx.lineTo(b, yy); ctx.stroke();
+    };
+    edge(yT, '#56d364', [6, 3]);
+    edge(yS, '#ff7b72', [6, 3]);
+    edge(yE, '#ffffff', []);
+    // tie the entry and stop back to the signal candle's wick tips
+    const xs = zone.sig === undefined ? null : ts.logicalToCoordinate(zone.sig);
+    if (xs !== null && xs - half < a) {
+      ctx.setLineDash([2, 2]);
+      ctx.lineWidth = 1;
+      [[yE, '#ffffff'], [yS, '#ff7b72']].forEach(([yy, color]) => {
+        ctx.strokeStyle = color;
+        ctx.beginPath(); ctx.moveTo(Math.max(0, xs - half), yy); ctx.lineTo(a, yy); ctx.stroke();
+      });
+    }
+    ctx.setLineDash([]);
+  });
+
+  // Volume by price for the bars in view, drawn as bars from the right edge.
+  if (s.v) {
+    let vpOn = false;
+    const vpLayer = overlay(3, (ctx, w) => {
+      const rng = chart.timeScale().getVisibleLogicalRange();
+      if (!vpOn || !rng) return;
+      const lo = Math.max(0, Math.ceil(rng.from)), hi = Math.min(bars.length - 1, Math.floor(rng.to));
+      if (hi <= lo) return;
+      let pMin = Infinity, pMax = -Infinity;
+      for (let j = lo; j <= hi; j++) { pMin = Math.min(pMin, bars[j].low); pMax = Math.max(pMax, bars[j].high); }
+      const N = 30, step = (pMax - pMin) / N || 1, bins = new Array(N).fill(0);
+      for (let j = lo; j <= hi; j++) {
+        const b = bars[j], vol = s.v[at[b.time]] || 0, a = Math.floor((b.low - pMin) / step), z = Math.min(N - 1, Math.floor((b.high - pMin) / step));
+        for (let q = a; q <= z; q++) bins[q] += vol / (z - a + 1);
+      }
+      const top = Math.max(...bins), right = w - chart.priceScale('right').width(), maxLen = (right) * 0.28;
+      const poc = bins.indexOf(top);
+      bins.forEach((v, q) => {
+        const y1 = candle.priceToCoordinate(pMin + (q + 1) * step), y0 = candle.priceToCoordinate(pMin + q * step);
+        if (y1 === null || y0 === null) return;
+        const len = v / top * maxLen;
+        ctx.fillStyle = q === poc ? 'rgba(88,166,255,0.38)' : 'rgba(139,148,158,0.22)';
+        ctx.fillRect(right - len, Math.min(y0, y1) + 0.5, len, Math.max(1, Math.abs(y0 - y1) - 1));
+      });
+    });
+    lines.push({ label: 'Volume by price', color: 'rgba(88,166,255,0.6)', on: false, set: v => { vpOn = v; vpLayer.redraw(); } });
+  }
+
+  // legend: crosshair readout plus clickable average toggles
+  const legend = document.createElement('div');
+  legend.className = 'tv-legend';
+  box.appendChild(legend);
+  const readout = document.createElement('div');
+  readout.className = 'tv-readout';
+  legend.appendChild(readout);
+  const keys = document.createElement('div');
+  keys.className = 'tv-keys';
+  lines.forEach(l => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tv-key' + (l.on ? ' on' : '');
+    b.innerHTML = '<i style="background:' + l.color + '"></i>' + escHtml(l.label);
+    b.setAttribute('aria-pressed', String(l.on));
+    b.onclick = () => { l.on = !l.on; l.set(l.on); b.classList.toggle('on', l.on); b.setAttribute('aria-pressed', String(l.on)); if (l.after) l.after(); };
+    keys.appendChild(b);
+  });
+  legend.appendChild(keys);
+
+  const fmtVol = v => v >= 1e9 ? (v / 1e9).toFixed(2) + 'B' : v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : String(v);
+  const fmt = v => v === null || v === undefined ? '-' : v.toFixed(2);
+  function showBar(date) {
+    const i = at[date];
+    if (i === undefined || s.c[i] === null) return;
+    let prev = null;
+    for (let k = i - 1; k >= 0; k--) { if (s.c[k] !== null) { prev = s.c[k]; break; } }
+    const chg = prev ? s.c[i] / prev - 1 : null;
+    let html = '<b>' + longDate(date) + '</b> <span>O ' + fmt(s.o[i]) + '</span> <span>H ' + fmt(s.h[i]) + '</span> <span>L ' + fmt(s.l[i])
+      + '</span> <span>C ' + fmt(s.c[i]) + '</span>';
+    if (s.v && s.v[i] !== null) html += ' <span>Vol ' + fmtVol(s.v[i]) + '</span>';
+    if (chg !== null) html += ' <span class="' + (chg >= 0 ? 'rise' : 'drop') + '">' + (chg >= 0 ? '+' : '−') + Math.abs(chg * 100).toFixed(2) + '%</span>';
+    (byDate[date] || []).forEach(e => {
+      const m = meta[e.key];
+      html += '<div><span style="color:' + (m.direction > 0 ? SIG_UP + '">▲' : SIG_DOWN + '">▼') + '</span> ' + escHtml(m.label) + '</div>';
+    });
+    readout.innerHTML = html;
+  }
+  const lastDate = bars.length ? bars[bars.length - 1].time : null;
+  chart.subscribeCrosshairMove(p => { showBar(timeKey(p.time) || picked || lastDate); });
+  showBar(lastDate);
+  if (opts.onPick) chart.subscribeClick(p => { const d = timeKey(p.time); if (d && byDate[d]) opts.onPick(d); });
+
+  function showRange(sessions) {
+    if (!bars.length) return;
+    if (!sessions) { chart.timeScale().fitContent(); return; }
+    const from = bars[Math.max(0, bars.length - sessions)].time;
+    chart.timeScale().setVisibleRange({ from, to: lastDate });
+  }
+
+  function pick(date, trade, shape) {
+    picked = date;
+    opts.pickedTrade = trade || null;
+    tradeLabels.forEach(l => candle.removePriceLine(l));
+    tradeLabels = [];
+    zone = null;
+    shapeLine.setData(shape && shape.points ? shape.points.map(([d, v]) => ({ time: d, value: v })) : []);
+    neckLine.setData(shape && shape.line && shape.line[0][0] !== shape.line[1][0] ? shape.line.map(([d, v]) => ({ time: d, value: v })) : []);
+    if (trade && trade.entry_date && barAt[trade.entry_date] !== undefined) {
+      const to = barAt[trade.exit_date] !== undefined ? barAt[trade.exit_date] : bars.length - 1;
+      zone = { sig: barAt[date], from: barAt[trade.entry_date], to, entry: trade.entry, stop: trade.stop, target: trade.target };
+      [['target', 'Target', '#56d364'], ['entry', 'Entry', '#e6edf3'], ['stop', 'Stop', '#ff7b72']].forEach(([k, title, color]) => {
+        tradeLabels.push(candle.createPriceLine({ price: trade[k], color, title, lineVisible: false, axisLabelVisible: true }));
+      });
+    }
+    tradeLayer.redraw();
+    pickLayer.redraw();
+    drawMarkers();
+    const i = at[date];
+    if (i !== undefined) {
+      chart.timeScale().setVisibleRange({ from: dates[Math.max(0, i - 45)], to: dates[Math.min(dates.length - 1, i + 30)] });
+      showBar(date);
+    }
+  }
+
+  // center the view on a date without picking a signal
+  function focus(date) {
+    const i = at[date];
+    if (i === undefined) return;
+    chart.timeScale().setVisibleRange({ from: dates[Math.max(0, i - 30)], to: dates[Math.min(dates.length - 1, i + 45)] });
+    showBar(date);
+  }
+
+  return { chart, pick, focus, showRange, remove: () => chart.remove() };
+}

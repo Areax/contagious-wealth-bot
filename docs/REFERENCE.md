@@ -24,6 +24,7 @@ python main.py scorecard --symbols AAPL,KO,NVDA,MSFT,JPM
 - `engine/`: the screening rules, uptrend math, option selection and Black-Scholes delta.
 - `data/`: the only code that talks to Yahoo Finance, Wikipedia and iShares.
 - `config/strategy_rules.py`: every number the strategy uses (thresholds, delta target, DTE), each commented with where it came from.
+- `market/`: the Market overview, Sectors, Stock lookup and Signal combos tabs (served under `/market/`). `market/fetchers/` downloads and studies the data, `market/templates/` holds the pages, `market/refresh.py` keeps the data fresh on weekdays at 12am, 8am and 5pm Eastern (`python -m market.refresh` refreshes what is due, `--force` refreshes everything). Its tests: `python -m unittest discover -s market/tests -t .`. The Briefing.com and earnings-calendar boxes also need `pip install playwright` and `python -m playwright install chromium`; without them those two boxes keep their last data.
 - `cache/`: created at runtime. Stock lists, saved universes and your last scan.
 
 ### Optional, off-path: AI ticker brainstorming

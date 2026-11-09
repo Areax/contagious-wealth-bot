@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stock Lookup</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+{% include "_base_styles.html" %}
+{% include "_signal_styles.html" %}
+  form.find { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 18px; max-width: 520px; }
+  form.find input { flex: 1; min-width: 180px; background: var(--surface); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 9px 12px; font: inherit; font-size: 16px; }
+  form.find input:focus { border-color: var(--accent); outline: none; }
+  form.find button { background: var(--accent); color: #0d1117; border: 0; border-radius: 8px; padding: 9px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  h2.small-h { font-size: 15px; margin: 0 0 2px; }
+  .small { font-size: 12.5px; color: var(--muted); line-height: 1.5; max-width: 80ch; margin: 0 0 8px; }
+  .movers { display: grid; grid-auto-flow: column; grid-auto-columns: 152px; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+  .movers.all { grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); overflow: visible; }
+  .mover { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; text-align: left; color: var(--text); font: inherit; cursor: pointer; display: grid; gap: 2px; }
+  .mover:hover { border-color: var(--accent); }
+  .mover.active { border-color: var(--accent); background: rgba(88, 166, 255, 0.10); }
+  .mover .top { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+  .mover .top b { font-size: 15px; }
+  .mover svg { width: 100%; height: 34px; display: block; }
+  .mover .sig { font-size: 11.5px; color: var(--muted); }
+  .mover .lv { font-size: 12px; line-height: 1.45; }
+  .mover .nm { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .movers { grid-auto-columns: 184px; }
+  .movers.all { grid-template-columns: repeat(auto-fill, minmax(184px, 1fr)); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+  .chip { background: none; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font: inherit; font-size: 12.5px; padding: 3px 11px; cursor: pointer; }
+  .chip.on { border-color: var(--accent); color: var(--text); background: rgba(88, 166, 255, 0.10); }
+  .linkish { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
+  #scanEarlier { margin-top: 6px; }
+  .who { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 26px 0 2px; }
+  .who .sym { font-size: 30px; font-weight: 700; letter-spacing: -0.5px; }
+  .who .co { font-size: 15px; color: var(--muted); }
+  .who .px { margin-left: auto; font-size: 17px; }
+  .read { font-size: 16px; line-height: 1.5; max-width: 80ch; margin: 2px 0 12px; }
+  .switcher { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 6px; padding: 8px 0; margin: 0 0 4px;
+    background: var(--bg, #0d1117); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: thin; }
+  .switcher:empty { display: none; }
+  .switcher .lbl { font-size: 12px; color: var(--muted); white-space: nowrap; margin-right: 2px; }
+  .switcher button { flex: none; background: none; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font: inherit; font-size: 12.5px; padding: 3px 10px; cursor: pointer; }
+  .switcher button:hover { color: var(--text); border-color: var(--muted); }
+  .switcher button.on { background: rgba(88, 166, 255, 0.14); border-color: var(--accent); color: var(--text); }
+  .switcher button.nav { border-radius: 7px; padding: 3px 9px; color: var(--text); }
+  .quick { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center; margin: -4px 0 14px; font-size: 12.5px; color: var(--muted); }
+  .quick:empty { display: none; }
+  .quick .pe b { color: var(--text); font-size: 14px; margin-left: 4px; }
+  .quick .bars { display: grid; grid-template-columns: auto 140px auto; gap: 2px 8px; align-items: center; }
+  .quick .bars i { display: block; height: 7px; border-radius: 4px; min-width: 2px; }
+  .quick .bars span:nth-child(3n) { color: var(--text); font-variant-numeric: tabular-nums; }
+  .quick a { color: var(--accent); text-decoration: none; }
+  .fund { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 10px; margin: 22px 0 0; max-width: 720px; }
+  .fund:empty { display: none; }
+  .fund .box { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .fund .pe { display: grid; gap: 8px; align-content: start; }
+  .fund .pe b { display: block; font-size: 16px; font-weight: 600; }
+  .fund .pe small, .fund .note { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+  .fund .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .fund .head b { font-size: 12.5px; }
+  .fund .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .fund .seg button { background: none; border: 0; color: var(--muted); padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .fund .seg button.on { background: var(--line); color: var(--text); }
+  .fund svg { width: 100%; height: 110px; display: block; }
+  .fund .key { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .fund .key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: 0; }
+  .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 8px; }
+  .ranges { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .ranges button { background: none; border: 0; color: var(--muted); padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .ranges button.active { background: var(--line); color: var(--text); }
+  .workspace { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 12px; align-items: stretch; }
+  .events { border: 1px solid var(--line); border-radius: 8px; overflow-y: auto; height: 520px; }
+  .events h3 { position: sticky; top: 0; margin: 0; padding: 9px 12px; font-size: 13px; background: var(--surface); border-bottom: 1px solid var(--line); z-index: 1; }
+  .ev { display: grid; grid-template-columns: 52px 1fr; gap: 0 8px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; color: var(--text); font: inherit; font-size: 13px; padding: 8px 10px 8px 9px; cursor: pointer; }
+  .ev:hover { background: rgba(255, 255, 255, 0.03); }
+  .ev.on { border-left-color: var(--accent); background: rgba(88, 166, 255, 0.08); }
+  .ev .d { color: var(--muted); }
+  .ev .res { grid-column: 2; font-size: 12px; }
+  .events h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .events .linkish { background: none; border: 0; color: var(--accent); font: inherit; font-size: 12px; font-weight: 400; cursor: pointer; padding: 0; }
+  .gaps h3 { border-top: 1px solid var(--line); }
+  .ev.gap { border-left-color: rgba(240, 136, 62, 0.7); }
+  .ev.gap.on { border-left-color: #f0883e; background: rgba(240, 136, 62, 0.08); }
+  #rChart { height: 520px; margin: 0; }
+  .picked { font-size: 13.5px; line-height: 1.5; margin: 8px 0 0; min-height: 1.5em; }
+  .facts { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 0 24px; }
+  .facts li { padding: 9px 0; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.45; }
+  .facts small { display: block; color: var(--muted); font-size: 12.5px; }
+  .foot { font-size: 12.5px; color: var(--muted); max-width: 80ch; margin-top: 24px; }
+  @media (max-width: 860px) {
+    .workspace { grid-template-columns: 1fr; }
+    .fund { grid-template-columns: 1fr; }
+    .workspace .events { order: 2; height: 300px; }
+    #rChart { height: 380px; }
+    .who .px { margin-left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body class="sig-page">
+
+{% set active = 'stock' %}{% include "_tabs.html" %}
+
+<header>
+  <div>
+    <h1>Stock lookup</h1>
+    <div class="meta">{% if data.last_bar %}Prices to the {{ data.last_bar }} close.{% else %}No data yet: the bot fills this in a few minutes after it starts.{% endif %}</div>
+  </div>
+</header>
+
+{% if view %}
+{% set tr = view.trades %}
+<section style="margin-bottom:0;">
+  <form class="find" onsubmit="event.preventDefault(); go(this.q.value, true);">
+    <input name="q" id="q" list="symbols" autocomplete="off" placeholder="Symbol or company, e.g. NVDA" aria-label="Stock symbol or company">
+    <button type="submit">Show</button>
+  </form>
+  <datalist id="symbols">
+    {% for sym, st in view.stocks|dictsort %}<option value="{{ sym }}">{{ st.name }}</option>{% endfor %}
+    {% for sym, st in (scan.stocks if scan and scan.stocks else {})|dictsort %}{% if sym not in view.stocks %}<option value="{{ sym }}">{{ st.name }}</option>{% endif %}{% endfor %}
+  </datalist>
+
+  <h2 class="small-h">Fired at the last close <span class="muted" id="scanWhen" style="font-weight:400;"></span></h2>
+  <p class="small" id="scanNote"></p>
+  <div class="chips" id="scanChips"></div>
+  <div class="movers" id="movers"><p class="small">Loading.</p></div>
+  <p class="small" style="margin-top:4px;"><button type="button" class="linkish" id="moversAll" hidden>Show all</button></p>
+</section>
+
+<section id="result" hidden>
+  <div class="switcher" id="switcher"></div>
+  <div class="who"><span class="sym" id="rSym"></span><span class="co" id="rName"></span><span class="px" id="rPx"></span></div>
+  <p class="read" id="rRead"></p>
+  <div class="quick" id="rQuick"></div>
+
+  <div class="bar">
+    <span class="ranges" id="ranges"><button type="button" data-n="21">1M</button><button type="button" data-n="63">3M</button><button type="button" data-n="126">6M</button><button type="button" data-n="0" class="active">1Y</button></span>
+    <span class="small" style="margin:0;">Scroll or pinch to zoom, drag to move. Click a signal to see its trade. Orange rings and bands are open price gaps.</span>
+  </div>
+  <div class="workspace">
+    <div class="events" id="rEvents"></div>
+    <div id="rChart"></div>
+  </div>
+  <p class="picked" id="rPicked"></p>
+
+  <details class="fold" style="margin-top:22px;">
+    <summary><b>Where it stands</b></summary>
+    <div class="fold-body"><ul class="facts" id="rFacts"></ul></div>
+  </details>
+
+  <div class="fund" id="rFund"></div>
+
+  <p class="foot">Each signal's trade: buy when price breaks the top of the signal candle's wick within 3 trading days (for ▼ signals, short
+    when it breaks the bottom of the wick). The two 21 EMA candle signals wait instead until the opposite EMA candle cancels them, up to 20
+    trading days. Stop at the other end of the signal candle's wick (never closer than
+    half a typical day's range), take profit at {{ tr.reward if tr else 1.2 }}× the risk, give up after {{ tr.max_hold if tr else 20 }} trading days.
+    R is the amount risked. Results include a {{ '%.1f' % ((tr.cost if tr else 0.002) * 100) }}% round-trip cost. Past results
+    say little about one stock's future; this page is not investment advice. Charts:
+    <a href="https://www.tradingview.com/lightweight-charts/" rel="noopener">TradingView Lightweight Charts</a>.</p>
+</section>
+
+<section id="missing" hidden>
+  <p id="missingText" style="border-left:3px solid var(--quiet); padding:8px 0 8px 14px; max-width:76ch;"></p>
+</section>
+
+<section id="scanEarlier"></section>
+{% endif %}
+
+<script>
+{% include "_chart_js.html" %}
+const STOCKS = {{ (view.stocks if view else {})|tojson }};
+const META = {{ (view.meta if view else {})|tojson }};
+// Daily S&P 500 scan: stocks outside the sector top-10s with a signal this week
+const SCAN = {{ (scan or {})|tojson }};
+const FUND = {{ (fund or {})|tojson }};
+Object.entries(SCAN.stocks || {}).forEach(([sym, st]) => { if (!STOCKS[sym]) STOCKS[sym] = st; });
+// signals left out of the lookup page (still used elsewhere on the site)
+['earnings_miss'].forEach(k => { delete META[k]; });
+const LAST_BAR = {{ (data.last_bar or '')|tojson }};
+const EMA_KEYS = ['first_red_above_ema21', 'green_below_ema21'];
+const GAP_STATS = {{ (data.gap_stats if data else none)|tojson }};
+const GAP_STATS_FROM = {{ ((data.study.start[:4]) if data and data.study else '')|tojson }};
+const COST = {{ (tr.cost if tr else 0.002)|tojson }};
+
+const $ = id => document.getElementById(id);
+const fmtPct = (v, d = 1) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v * 100).toFixed(d) + '%';
+const fmtR = v => Math.abs(v) < 0.005 ? '0.00R' : (v > 0 ? '+' : '−') + Math.abs(v).toFixed(2) + 'R';
+const esc = escHtml;
+const shortDate = d => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const money = v => v > 0.005 ? 'rise' : v < -0.005 ? 'drop' : 'muted';
+
+function sigName(m) {
+  return '<span class="arrow ' + (m.direction > 0 ? 'up">▲' : 'down">▼') + '</span>' + esc(m.label);
+}
+
+function resolve(q) {
+  q = (q || '').trim();
+  if (!q) return null;
+  const up = q.toUpperCase();
+  if (STOCKS[up]) return up;
+  const hit = Object.keys(STOCKS).find(s => (STOCKS[s].name || '').toUpperCase().includes(up));
+  return hit || up;
+}
+
+function go(q, scroll) {
+  const sym = resolve(q);
+  if (!sym) return;
+  history.replaceState(null, '', '?s=' + encodeURIComponent(sym));
+  $('q').value = sym;
+  document.querySelectorAll('.mover').forEach(b => b.classList.toggle('active', b.dataset.sym === sym));
+  render(sym);
+  drawSwitcher(sym);
+  if (scroll) $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Sticky row above the stock: jump between today's scan stocks without
+// scrolling back up. Left/right arrow keys do the same.
+let switchList = [];
+function drawSwitcher(sym) {
+  const el = $('switcher');
+  if (!el) return;
+  if (!switchList.length) { el.innerHTML = ''; return; }
+  const i = switchList.indexOf(sym);
+  el.innerHTML = '<button type="button" class="nav" data-step="-1" aria-label="Previous stock">◀</button>'
+    + '<button type="button" class="nav" data-step="1" aria-label="Next stock">▶</button>'
+    + '<span class="lbl">' + (i >= 0 ? (i + 1) + ' of ' + switchList.length : 'Fired at the last close') + '</span>'
+    + switchList.map(s => '<button type="button" data-sym="' + s + '"' + (s === sym ? ' class="on"' : '') + '>' + s + '</button>').join('');
+  el.querySelectorAll('button[data-sym]').forEach(b => b.addEventListener('click', () => go(b.dataset.sym, false)));
+  el.querySelectorAll('button[data-step]').forEach(b => b.addEventListener('click', () => stepStock(Number(b.dataset.step))));
+  const on = el.querySelector('.on');
+  if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+function stepStock(step) {
+  if (!switchList.length) return;
+  const i = switchList.indexOf(curSym || $('rSym').textContent);
+  go(switchList[(i + step + switchList.length) % switchList.length], false);
+}
+document.addEventListener('keydown', e => {
+  const tgt = e.target;
+  if ((tgt && tgt.closest && tgt.closest('input, textarea, select, [contenteditable]')) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { if (switchList.length) { e.preventDefault(); stepStock(e.key === 'ArrowRight' ? 1 : -1); } }
+});
+
+// ---- Fired at the last close (daily S&P 500 scan) ----
+let scanCharts = null;
+// sector chart data plus the scan's chart data for stocks outside it
+function loadAll() {
+  if (!scanCharts) scanCharts = fetch('daily_scan_charts.json').then(r => r.ok ? r.json() : null).catch(() => null);
+  return Promise.all([loadCharts().catch(() => ({ dates: [], stocks: {} })), scanCharts]).then(([d, x]) => {
+    if (x && !d._merged) {
+      Object.entries(x.stocks).forEach(([sym, s]) => { if (!d.stocks[sym]) d.stocks[sym] = { ...s, _dates: x.dates }; });
+      d._merged = true;
+    }
+    return d;
+  });
+}
+
+const fmtR2 = v => (v > 0.0049 ? '+' : v < -0.0049 ? '−' : '') + Math.abs(v).toFixed(2) + 'R';
+const usd = v => '$' + v.toFixed(2);
+let scanFilter = 'all';
+
+// one card per stock and day; a stock can fire more than one signal at once
+function scanGroups(hits) {
+  const out = [], by = {};
+  hits.forEach(h => {
+    const id = h.symbol + h.date;
+    if (!by[id]) { by[id] = { ...h, keys: [] }; out.push(by[id]); }
+    by[id].keys.push(h);
+  });
+  return out;
+}
+
+function scanCard(g, old) {
+  const st = STOCKS[g.symbol] || {};
+  const names = g.keys.map(h => esc(h.label) + (h.engulfed > 1 ? ' (' + h.engulfed + ' candles)' : '')).join(', ');
+  let lv = 'Buy above ' + usd(g.entry) + '<br>Stop ' + usd(g.stop) + ', target ' + usd(g.target);
+  if (old) lv = shortDate(g.date) + ': ' + (g.status === 'open' ? 'bought, still open' + (g.r !== undefined ? ' (' + fmtR2(g.r) + ')' : '') : 'waiting for a break above ' + usd(g.entry));
+  return '<button type="button" class="mover" data-sym="' + g.symbol + '" title="' + esc(st.name || '') + '">'
+    + '<span class="top"><b>' + g.symbol + '</b>' + (st.chg_pct !== undefined ? '<span class="' + money(st.chg_pct) + '">' + fmtPct(st.chg_pct, 1) + '</span>' : '') + '</span>'
+    + '<span class="nm">' + esc(st.name || '') + '</span>'
+    + '<span class="sig"><span class="arrow up">▲</span> ' + names + '</span>'
+    + '<span class="lv">' + lv + '</span></button>';
+}
+
+function buildScan() {
+  const hits = SCAN.hits || [], R = SCAN.rule || {}, H = SCAN.history || {};
+  if (!SCAN.last_bar) { $('movers').innerHTML = '<p class="small">The daily scan runs on the next data refresh.</p>'; return []; }
+  $('scanWhen').textContent = '(' + longDate(SCAN.last_bar) + ', ' + SCAN.n_scanned + ' S&P 500 stocks)';
+  const keys = SCAN.signals || [];
+  const today = hits.filter(h => h.date === SCAN.last_bar), earlier = hits.filter(h => h.date !== SCAN.last_bar);
+  const label = k => (META[k] || {}).label || k;
+  $('scanChips').innerHTML = ['all'].concat(keys).map(k => '<button type="button" class="chip' + (k === scanFilter ? ' on' : '') + '" data-k="' + k + '">'
+    + (k === 'all' ? 'All' : esc(label(k))) + ' (' + scanGroups(k === 'all' ? today : today.filter(h => h.key === k)).length + ')</button>').join('');
+  $('scanChips').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => { scanFilter = b.dataset.k; buildScan(); }));
+  const rec = k => { const t = H[k]; return t ? 'won ' + Math.round(t.win * 100) + '% of ' + t.n.toLocaleString() + ' trades, ' + fmtR2(t.avg_r) + ' a trade' : 'no record'; };
+  $('scanNote').innerHTML = 'Signals that beat buying on a random day in testing. The order: buy if price breaks the top of the signal candle’s wick within '
+    + R.trigger_days + ' trading days, stop one typical day’s range below its low, target ' + R.reward + '× the risk, close after '
+    + R.max_hold + ' trading days. Over the last ' + R.years + ' years on these stocks, '
+    + (scanFilter === 'all' ? keys.map(k => esc(label(k)) + ' ' + rec(k)).join('; ') : esc(label(scanFilter)) + ' ' + rec(scanFilter))
+    + '. Buying on a random day the same way: ' + rec('random') + '. Not investment advice.';
+  const pick = list => scanGroups(scanFilter === 'all' ? list : list.filter(h => h.key === scanFilter));
+  const rows = pick(today);
+  $('movers').innerHTML = rows.length ? rows.map(g => scanCard(g, false)).join('') : '<p class="small">None of these signals fired at the last close.</p>';
+  const old = pick(earlier).filter(g => g.status === 'waiting' || g.status === 'open');
+  $('scanEarlier').innerHTML = old.length ? '<details class="fold"><summary><b>Earlier this week, order still live (' + old.length + ')</b></summary><div class="fold-body"><div class="movers all">'
+    + old.map(g => scanCard(g, true)).join('') + '</div></div></details>' : '';
+  switchList = rows.map(g => g.symbol).filter((v, k, a) => a.indexOf(v) === k);
+  drawSwitcher(curSym || new URLSearchParams(location.search).get('s'));
+  const cur = new URLSearchParams(location.search).get('s');
+  document.querySelectorAll('.mover').forEach(b => { b.classList.toggle('active', b.dataset.sym === cur); b.addEventListener('click', () => go(b.dataset.sym, true)); });
+  const btn = $('moversAll');
+  btn.hidden = rows.length <= 6;
+  btn.onclick = () => { const all = $('movers').classList.toggle('all'); btn.textContent = all ? 'Show fewer' : 'Show all'; };
+  return rows;
+}
+
+// ---- Debt, cash flow and P/E ----
+const FUND_COLORS = { debt: '#e5739a', fcf: '#3fb8c4', cash: '#6e9ef5' };
+let fundMode = 'annual';
+const money$ = v => v === null || v === undefined ? '-' : (v < 0 ? '−' : '') + '$' + (Math.abs(v) >= 1e9 ? (Math.abs(v) / 1e9).toFixed(2) + 'B'
+  : Math.abs(v) >= 1e6 ? (Math.abs(v) / 1e6).toFixed(0) + 'M' : Math.abs(v).toFixed(0));
+
+function fundChart(rows) {
+  const keys = ['debt', 'fcf', 'cash'], W = 560, H = 110, padL = 46, padB = 18, padT = 6;
+  const vals = rows.flatMap(r => keys.map(k => r[k]).filter(v => v !== null));
+  if (!vals.length) return '<p class="note">No figures from Yahoo for this stock.</p>';
+  let hi = Math.max(0, ...vals), lo = Math.min(0, ...vals);
+  const raw = (hi - lo) / 4, mag = Math.pow(10, Math.floor(Math.log10(raw || 1))), step = [1, 2, 2.5, 5, 10].map(x => x * mag).find(x => x >= raw);
+  hi = Math.ceil(hi / step) * step; lo = Math.floor(lo / step) * step;
+  const y = v => padT + (hi - v) / (hi - lo || 1) * (H - padT - padB);
+  let g = '';
+  for (let v = lo; v <= hi + step / 2; v += step) {
+    g += '<line x1="' + padL + '" x2="' + W + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="' + (Math.abs(v) < step / 2 ? '#6e7681' : GRID) + '" stroke-width="1"/>'
+      + '<text x="' + (padL - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="10" fill="' + MUTED + '">' + money$(v).replace('.00B', 'B') + '</text>';
+  }
+  const slot = (W - padL) / rows.length, bw = Math.min(26, slot / 4.2);
+  rows.forEach((r, i) => {
+    const cx = padL + slot * (i + 0.5);
+    keys.forEach((k, j) => {
+      if (r[k] === null) return;
+      const x = cx + (j - 1.5) * (bw + 3), y0 = y(Math.max(0, r[k])), y1 = y(Math.min(0, r[k]));
+      g += '<rect x="' + x.toFixed(1) + '" y="' + y0.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + Math.max(1, y1 - y0).toFixed(1) + '" rx="2" fill="' + FUND_COLORS[k] + '"><title>'
+        + esc(r.period) + ' ' + { debt: 'debt', fcf: 'free cash flow', cash: 'cash' }[k] + ': ' + money$(r[k]) + '</title></rect>';
+    });
+    g += '<text x="' + cx.toFixed(1) + '" y="' + (H - 4) + '" text-anchor="middle" font-size="10" fill="' + MUTED + '">' + esc(r.period) + '</text>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Debt, free cash flow and cash by period">' + g + '</svg>';
+}
+
+function fundHtml(sym) {
+  const f = FUND[sym];
+  if (!f) return '';
+  const rows = f[fundMode] || [];
+  const lastQ = (f.quarterly || []).slice(-1)[0], lastA = (f.annual || []).slice(-1)[0];
+  const debt = (lastQ && lastQ.debt !== null ? lastQ : lastA || {}).debt, cash = (lastQ && lastQ.cash !== null ? lastQ : lastA || {}).cash;
+  const fcf = f.fcf_ttm !== null && f.fcf_ttm !== undefined ? f.fcf_ttm : lastA ? lastA.fcf : null;
+  const notes = [];
+  if (debt !== null && debt !== undefined) {
+    if (fcf !== null && fcf > 0) notes.push(debt > 0 ? 'Debt is ' + (debt / fcf).toFixed(1) + '× a year of free cash flow (' + money$(debt) + ' vs ' + money$(fcf) + ').' : 'No debt.');
+    else if (fcf !== null) notes.push('Free cash flow over the last year was ' + money$(fcf) + ', so debt (' + money$(debt) + ') can’t be paid down from cash flow right now.');
+    if (cash !== null && cash !== undefined && debt > 0) notes.push('Cash covers ' + Math.round(cash / debt * 100) + '% of debt.');
+  }
+  const pe = v => v === null || v === undefined ? null : v.toFixed(1);
+  return '<div class="box pe"><div><small>P/E, last 12 months</small><b>' + (pe(f.pe) || 'n/a') + '</b>'
+    + '<small>' + (f.pe === null ? 'Earnings were zero or negative.' : 'Price ÷ last year’s earnings.') + '</small></div>'
+    + '<div><small>Forward P/E</small><b>' + (pe(f.forward_pe) || 'n/a') + '</b><small>Using next year’s expected earnings.</small></div></div>'
+    + '<div class="box"><div class="head"><b>Debt level and coverage</b><span class="seg">'
+    + '<button type="button" data-m="annual"' + (fundMode === 'annual' ? ' class="on"' : '') + '>Annual</button>'
+    + '<button type="button" data-m="quarterly"' + (fundMode === 'quarterly' ? ' class="on"' : '') + '>Quarterly</button></span></div>'
+    + fundChart(rows)
+    + '<div class="key"><span><i style="background:' + FUND_COLORS.debt + '"></i>Debt</span><span><i style="background:' + FUND_COLORS.fcf + '"></i>Free cash flow'
+    + (fundMode === 'quarterly' ? ' (per quarter)' : '') + '</span><span><i style="background:' + FUND_COLORS.cash + '"></i>Cash &amp; equivalents</span></div>'
+    + (notes.length ? '<p class="note" style="margin:6px 0 0;">' + notes.join(' ') + ' Source: Yahoo Finance.</p>' : '') + '</div>';
+}
+
+// one-glance version for the top: latest debt and cash, last 4 quarters' free cash flow, P/E
+function quickHtml(sym) {
+  const f = FUND[sym];
+  if (!f) return '';
+  const q = (f.quarterly || []).filter(r => r.debt !== null || r.cash !== null).slice(-1)[0] || (f.annual || []).slice(-1)[0];
+  const fcf = f.fcf_ttm !== null && f.fcf_ttm !== undefined ? f.fcf_ttm : ((f.annual || []).slice(-1)[0] || {}).fcf;
+  const rows = [['Debt', q && q.debt, 'debt'], ['Free cash flow, last year', fcf, 'fcf'], ['Cash', q && q.cash, 'cash']]
+    .filter(r => r[1] !== null && r[1] !== undefined);
+  const top = Math.max(1, ...rows.map(r => Math.abs(r[1])));
+  const pe = v => v === null || v === undefined ? 'n/a' : v.toFixed(1);
+  let html = '<span class="pe">P/E<b>' + pe(f.pe) + '</b></span><span class="pe">Forward P/E<b>' + pe(f.forward_pe) + '</b></span>';
+  if (rows.length) html += '<span class="bars">' + rows.map(([label, v, k]) => '<span>' + label + '</span><i style="width:'
+    + Math.max(2, Math.abs(v) / top * 140).toFixed(0) + 'px;background:' + FUND_COLORS[k] + (v < 0 ? ';opacity:.45' : '') + '"></i><span>' + money$(v) + '</span>').join('') + '</span>';
+  html += '<span>' + (q ? 'Debt and cash as of ' + esc(q.period) + '. ' : '') + '<a href="#rFund">More below</a></span>';
+  return html;
+}
+
+function drawFund(sym) {
+  $('rQuick').innerHTML = quickHtml(sym);
+  $('rFund').innerHTML = fundHtml(sym);
+  $('rFund').querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { fundMode = b.dataset.m; drawFund(sym); }));
+}
+
+// ---- One stock ----
+function tradeText(t, dir) {
+  const wick = dir < 0 ? 'below the wick' : 'above the wick';
+  if (!t) return '<span class="muted">Waiting for a break ' + wick + '</span>';
+  if (t.result === 'skipped') return '<span class="muted">' + ({ stop_first: 'No trade: hit the stop level first', cancelled: 'No trade: cancelled by the opposite EMA candle' }[t.why] || 'No trade: never broke ' + wick) + '</span>';
+  const r = '<span class="' + money(t.r) + '">' + fmtR(t.r) + ' (' + fmtPct(t.ret) + ')</span>';
+  if (t.result === 'target') return '<span class="rise">Hit target</span> ' + r;
+  if (t.result === 'stop') return '<span class="drop">Stopped out</span> ' + r;
+  if (t.result === 'timeout') return '<span class="muted">Sold at the {{ tr.max_hold if tr else 20 }}-day time limit</span> ' + r;
+  return '<span class="muted">Still open,</span> ' + r + ' <span class="muted">so far</span>';
+}
+
+function pickedText(ev) {
+  const m = META[ev.key], t = ev.trade;
+  let s = '<b>' + shortDate(ev.date) + ':</b> ' + sigName(m) + '. ';
+  const far = m.direction > 0 ? 'top of the wick' : 'bottom of the wick', near = m.direction > 0 ? 'bottom of the wick' : 'top of the wick';
+  if (ev.engulfed) s += 'It engulfed ' + ev.engulfed + ' ' + (m.direction > 0 ? 'red' : 'green') + ' candle' + (ev.engulfed > 1 ? 's' : '') + '. ';
+  const standing = EMA_KEYS.includes(ev.key);
+  if (!t) s += standing ? 'Waiting: the order sits at the ' + far + ' until price breaks it or the opposite EMA candle cancels it.'
+    : 'Waiting: the trade starts only if price breaks the ' + far + ' within 3 trading days.';
+  else if (t.result === 'skipped') s += t.why === 'stop_first'
+    ? 'No trade: price reached the ' + near + ' (the stop) before it broke the ' + far + '.'
+    : t.why === 'cancelled' ? 'No trade: the opposite EMA candle printed before price broke the ' + far + ', which cancels the order.'
+    : standing ? 'No trade: price never broke the ' + far + ' within 20 trading days.'
+    : 'No trade: price never broke the ' + far + ' within 3 trading days.';
+  else {
+    s += (m.direction > 0 ? 'Buy' : 'Short') + ' at $' + t.entry.toFixed(2) + ' on ' + shortDate(t.entry_date)
+      + ', <span class="drop">stop $' + t.stop.toFixed(2) + '</span>, <span class="rise">target $' + t.target.toFixed(2) + '</span>. ';
+    // a gap past the wick fills a stop order at the open, not at the wick
+    const cs = curData && curData.stocks[curSym], cd = cs && (cs._dates || curData.dates), ci = cd ? cd.indexOf(ev.date) : -1;
+    const wickPx = ci >= 0 ? (m.direction > 0 ? cs.h[ci] : cs.l[ci]) : null;
+    if (wickPx !== null && Math.abs(t.entry - wickPx) > 0.005 * wickPx)
+      s += 'The order sat at the ' + far + ' ($' + wickPx.toFixed(2) + '), but the stock opened ' + (m.direction > 0 ? 'above' : 'below')
+        + ' it on ' + shortDate(t.entry_date) + ', so the order filled at the open. ';
+    s += t.result === 'open' ? tradeText(t, m.direction) + '.' : 'Exit $' + t.exit.toFixed(2) + ' on ' + shortDate(t.exit_date) + ': ' + tradeText(t, m.direction) + '.';
+  }
+  if (m.trade) s += ' <span class="muted">This signal across all stocks: won ' + Math.round(m.trade.win * 100) + '% of '
+    + m.trade.n.toLocaleString() + ' trades, ' + fmtR(m.trade.avg_r) + ' a trade.</span>';
+  return s;
+}
+
+function theRead(events, st) {
+  const done = events.filter(e => e.trade && ['target', 'stop', 'timeout'].includes(e.trade.result));
+  const n = (k, word) => k + ' ' + word + (k === 1 ? '' : 's');
+  let s;
+  if (!events.length) s = 'No signals in the last 12 months.';
+  else {
+    const won = done.filter(e => e.trade.r > 0).length;
+    const total = done.reduce((a, e) => a + e.trade.r, 0);
+    s = n(events.length, 'signal') + ' in the last 12 months. ';
+    if (done.length) s += 'Trading each one would have won ' + won + ' of ' + done.length + ', <span class="' + money(total) + '">'
+      + fmtR(total) + ' in total</span>' + (total > 0 ? ' (about $' + Math.round(total * 100) + ' made risking $100 a trade).' : total < 0 ? ' (about $' + Math.round(-total * 100) + ' lost risking $100 a trade).' : '.');
+    // costs in R: the round-trip cost divided by how far away the stop sat
+    const cost = done.reduce((a, e) => a + COST * e.trade.entry / Math.abs(e.trade.entry - e.trade.stop), 0);
+    if (done.length && cost >= 0.5) s += ' Trading costs took ' + cost.toFixed(2) + 'R of that; before costs: ' + fmtR(total + cost) + '.';
+  }
+  if (st.above_sma200 !== null) s += ' Long-term trend: <span class="' + (st.above_sma200 ? 'rise">up' : 'drop">down') + '</span>.';
+  return s;
+}
+
+function facts(st) {
+  const out = [];
+  if (st.above_sma200 !== null) out.push([st.above_sma200 ? 'Long-term trend: up' : 'Long-term trend: down', (st.above_sma200 ? 'Above' : 'Below') + ' its 200-day average price.']);
+  if (st.above_ema21 !== null) out.push([st.above_ema21 ? 'Short-term trend: up' : 'Short-term trend: down', (st.above_ema21 ? 'Above' : 'Below') + ' its 21-day exponential average.']);
+  if (st.pct_from_high !== null) out.push([st.pct_from_high > -0.005 ? 'At its 1-year high' : fmtPct(-st.pct_from_high).replace('+', '') + ' below its 1-year high', 'Highest price of the past 12 months.']);
+  if (st.rs_pct !== null) out.push(['Stronger than ' + Math.round(st.rs_pct * 100) + '% of these stocks', '12-month return' + (st.ret_12m !== null ? ' of ' + fmtPct(st.ret_12m) : '') + ', ranked against the others.']);
+  if (st.atr_pct !== null) out.push(['Moves about ' + (st.atr_pct * 100).toFixed(1) + '% on a typical day', 'Average daily range over the last 14 days.']);
+  out.push(['Sector', st.sectors.map(s => s.name + ' (' + s.etf + ')').join(', ')]);
+  return out.map(([a, b]) => '<li>' + esc(a) + '<small>' + esc(b) + '</small></li>').join('');
+}
+
+let chartApi = null, range = 0, curEvents = [], allEvents = [], curData = null, curSym = null, showSkipped = false;
+const isNoTrade = e => e.trade && e.trade.result === 'skipped';
+
+// Open price gaps, nearest to today's price first.
+function gapList(s, close) {
+  const open = (s.gaps || []).filter(g => !g.filled && g.rem).map(g => {
+    const lo = g.rem[0], hi = g.rem[1];
+    const dist = close > hi ? (close - hi) / close : close < lo ? (lo - close) / close : 0;
+    return { ...g, lo, hi, dist, below: close > hi };
+  }).sort((a, b) => a.dist - b.dist);
+  let html = '<h3>Open price gaps, last 12 months (' + open.length + ')</h3>';
+  if (GAP_STATS) html += '<p class="small" style="padding:8px 12px 0;margin:0;">Two same-color candles with a gap of 1%+ between them. Of '
+    + GAP_STATS.n.toLocaleString() + ' since ' + GAP_STATS_FROM + ', ' + Math.round(GAP_STATS.filled['20'] * 100) + '% were filled within a month and '
+    + Math.round(GAP_STATS.filled['250'] * 100) + '% within a year. Something to watch, not a trade signal.</p>';
+  html += open.length ? open.map(g => '<button type="button" class="ev gap" data-date="' + g.b + '"><span class="d">' + shortDate(g.b)
+    + (g.b.slice(0, 4) !== LAST_BAR.slice(0, 4) ? '<br>' + g.b.slice(0, 4) : '') + '</span><span>'
+    + (g.dir > 0 ? 'Gap up' : 'Gap down') + ', $' + g.lo.toFixed(2) + ' to $' + g.hi.toFixed(2) + '</span><span class="res muted">'
+    + (g.dist === 0 ? 'Price is inside it now' : (g.dist * 100).toFixed(1) + '% ' + (g.below ? 'below' : 'above') + ' today’s price') + '</span></button>').join('')
+    : '<p class="small" style="padding:10px 12px;">None open.</p>';
+  return html;
+}
+
+function listEvents() {
+  const shown = showSkipped ? allEvents : allEvents.filter(e => !isNoTrade(e));
+  const hidden = allEvents.length - shown.length;
+  curEvents = shown;
+  return '<h3>Signals in the last 12 months (' + shown.length + ')'
+    + (hidden || showSkipped ? ' <button type="button" class="linkish" id="skipToggle">' + (showSkipped ? 'Hide no-trade' : 'Show ' + hidden + ' no-trade') + '</button>' : '') + '</h3>'
+    + (shown.length ? shown.map(e =>
+      '<button type="button" class="ev" data-date="' + e.date + '"><span class="d">' + shortDate(e.date) + '</span><span>' + sigName(META[e.key]) + '</span>'
+      + '<span class="res">' + tradeText(e.trade, META[e.key].direction) + '</span></button>').join('') : '<p class="small" style="padding:10px 12px;">None.</p>');
+}
+
+function drawWorkspace(keepView) {
+  const s = curData.stocks[curSym], st = STOCKS[curSym];
+  $('rEvents').innerHTML = listEvents() + (s ? '<div class="gaps">' + gapList(s, st.close) + '</div>' : '');
+  $('rEvents').querySelectorAll('.ev:not(.gap)').forEach(b => b.addEventListener('click', () => pickDate(b.dataset.date, false)));
+  $('rEvents').querySelectorAll('.ev.gap').forEach(b => b.addEventListener('click', () => {
+    if (chartApi) chartApi.focus(b.dataset.date);
+    $('rEvents').querySelectorAll('.ev').forEach(x => x.classList.toggle('on', x === b));
+  }));
+  const tg = $('skipToggle');
+  if (tg) tg.addEventListener('click', () => { showSkipped = !showSkipped; drawWorkspace(true); });
+  const view = keepView && chartApi ? chartApi.chart.timeScale().getVisibleLogicalRange() : null;
+  if (chartApi) chartApi.remove();
+  chartApi = s ? priceChart($('rChart'), s, s._dates || curData.dates, { events: curEvents, meta: META, onPick: date => pickDate(date, true) }) : null;
+  if (chartApi) { if (view) chartApi.chart.timeScale().setVisibleLogicalRange(view); else chartApi.showRange(range); }
+  $('rPicked').innerHTML = '';
+}
+
+function pickDate(date, scrollList) {
+  const evs = curEvents.filter(e => e.date === date);
+  if (!evs.length || !chartApi) return;
+  const ev = evs[0];
+  chartApi.pick(date, ev.trade && ev.trade.result !== 'skipped' ? ev.trade : null, (evs.find(e => e.shape) || {}).shape);
+  document.querySelectorAll('.ev:not(.gap)').forEach(b => b.classList.toggle('on', b.dataset.date === date));
+  document.querySelectorAll('.ev.gap').forEach(b => b.classList.remove('on'));
+  $('rPicked').innerHTML = evs.map(pickedText).join('<br>');
+  if (scrollList) {
+    const btn = document.querySelector('.ev:not(.gap)[data-date="' + date + '"]'), list = $('rEvents');
+    if (btn) list.scrollTop = btn.offsetTop - list.clientHeight / 2;
+  }
+}
+
+function render(sym) {
+  const st = STOCKS[sym];
+  if (!st || st.missing) {
+    $('result').hidden = true;
+    $('missing').hidden = false;
+    $('missingText').textContent = st ? sym + ' has no price data in this update. Try again after the next refresh.'
+      : sym + ' isn’t in this list. The lookup covers the top 10 holdings of each sector fund, plus S&P 500 stocks with a signal this week. Pick one from the suggestions as you type.';
+    return;
+  }
+  $('missing').hidden = true;
+  $('result').hidden = false;
+  document.title = sym + ' signals';
+  $('rSym').textContent = sym;
+  $('rName').textContent = st.name || '';
+  $('rPx').innerHTML = '$' + st.close.toFixed(2) + ' <span class="' + money(st.chg_pct) + '">' + fmtPct(st.chg_pct, 2) + '</span> <span class="muted" style="font-size:13px;">last day</span>';
+  $('rRead').textContent = 'Loading.';
+  $('rPicked').innerHTML = '';
+  $('rFacts').innerHTML = facts(st);
+  drawFund(sym);
+  loadAll().then(d => {
+    if ($('rSym').textContent !== sym) return;
+    const s = d.stocks[sym];
+    allEvents = (s ? s.events : []).filter(e => META[e.key]).slice().sort((a, b) => b.date.localeCompare(a.date));
+    curData = d; curSym = sym;
+    $('rRead').innerHTML = theRead(allEvents, st);
+    drawWorkspace(false);
+  }).catch(err => {
+    console.error(err);
+    $('rRead').textContent = 'Signal history is missing. It is created on the next data refresh.';
+  });
+}
+
+document.querySelectorAll('#ranges button').forEach(b => b.addEventListener('click', () => {
+  range = Number(b.dataset.n);
+  document.querySelectorAll('#ranges button').forEach(x => x.classList.toggle('active', x === b));
+  if (chartApi) chartApi.showRange(range);
+}));
+
+if ($('q')) {
+  const start = new URLSearchParams(location.search).get('s');
+  const rows = buildScan();
+  if (start) go(start, false);
+  else if (rows.length) go(rows[0].symbol, false);
+}
+</script>
+
+</body>
+</html>

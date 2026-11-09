@@ -1,0 +1,261 @@
+{%- macro pct(v, digits=1, colored=True) -%}
+{%- if v is none -%}<span class="muted">-</span>
+{%- elif ('%.' ~ digits ~ 'f') % (v * 100)|abs == ('%.' ~ digits ~ 'f') % 0 -%}<span class="muted">{{ ('%.' ~ digits ~ 'f%%') % 0 }}</span>
+{%- else -%}<span class="{{ ('rise' if v > 0 else 'drop' if v < 0 else '') if colored else '' }}">{{ ('%+.' ~ digits ~ 'f%%') % (v * 100) }}</span>
+{%- endif -%}
+{%- endmacro -%}
+{%- macro lights(r) -%}
+{%- if r is none or r.score is none -%}<span class="lights" title="Not enough history"><i></i><i></i><i></i></span>
+{%- else -%}<span class="lights" role="img" aria-label="{{ r.score }} of 3 trend checks on"
+  title="Above 10-month average: {{ 'yes' if r.above_10m else 'no' }}&#10;Above 200-day average: {{ 'yes' if r.above_200d else 'no' }}&#10;Up over 12 months: {{ 'yes' if r.ret_12m > 0 else 'no' }}"><i class="{{ 'on' if r.above_10m }}"></i><i class="{{ 'on' if r.above_200d }}"></i><i class="{{ 'on' if r.ret_12m > 0 }}"></i></span>
+{%- endif -%}
+{%- endmacro -%}
+{%- macro sig_name(m) -%}<span class="arrow {{ 'up' if m.direction > 0 else 'down' }}">{{ '&#9650;'|safe if m.direction > 0 else '&#9660;'|safe }}</span>{{ m.label }}{%- endmacro -%}
+{%- macro rr(v) -%}<span class="{{ 'rise' if v > 0.005 else 'drop' if v < -0.005 else 'muted' }}">{{ '0.00' if v|abs < 0.005 else '%+.2f' % v }}R</span>{%- endmacro -%}
+{%- macro checks_cell(c, side) -%}
+{%- if not c -%}<span class="muted">-</span>
+{%- else -%}{%- set n = c.up if side == 'up' else c.down -%}{%- set of = c.n_up if side == 'up' else c.n_down -%}
+<span class="meter" title="{{ (c.up_on if side == 'up' else c.down_on)|join('&#10;') }}"><i class="{{ side }}" style="width:{{ (100 * n / of)|round(0) }}%"></i></span> {{ n }}<span class="muted"> of {{ of }}</span>
+{%- endif -%}
+{%- endmacro -%}
+{%- macro trade_line(t) -%}
+{%- if t -%}<span class="{{ t.tone if t.tone != 'quiet' else 'muted' }}">{{ t.text }}</span><span class="muted">: won {{ '%.0f' % (t.win * 100) }}% of {{ '{:,}'.format(t.n) }} past trades, {{ rr(t.avg_r) }} a trade</span>
+{%- else -%}<span class="muted">Not backtested</span>{%- endif -%}
+{%- endmacro -%}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sector Signals</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+{% include "_base_styles.html" %}
+{% include "_signal_styles.html" %}
+  .picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; }
+  .pick { display: inline-flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+  .pick:hover { border-color: var(--accent); }
+  .pick.active { border-color: var(--accent); background: rgba(88, 166, 255, 0.12); }
+  .pick b { font-weight: 600; }
+  .lights { display: inline-flex; gap: 3px; vertical-align: middle; }
+  .lights i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); display: inline-block; }
+  .lights i.on { background: var(--rise); }
+  .view-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 0 0 4px; }
+  .view-head h2 { margin: 0; font-size: 22px; }
+  .view-head .stat { font-size: 13px; color: var(--muted); }
+  .ranges { margin-left: auto; display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .ranges button { background: none; border: 0; color: var(--muted); padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .ranges button.active { background: var(--line); color: var(--text); }
+  table.stocks { margin-top: 14px; }
+  table.stocks td { padding: 8px 6px; vertical-align: top; }
+  table.stocks tr.go { cursor: pointer; }
+  table.stocks tr.go:hover td { background: rgba(255, 255, 255, 0.025); }
+  table.stocks a.sym { font-weight: 600; }
+  .tag { display: inline-block; font-size: 12.5px; margin-right: 10px; }
+  .callout { border-left: 3px solid var(--quiet); padding: 6px 0 6px 14px; margin: 0 0 14px; font-size: 14.5px; line-height: 1.5; max-width: 80ch; }
+  .callout.good { border-left-color: var(--rise); }
+  .fired { display: grid; grid-template-columns: minmax(240px, 380px) 1fr; gap: 6px 24px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .fired:last-child { border-bottom: 1px solid var(--line); }
+  .fired .what { display: grid; gap: 3px; align-content: start; font-size: 13px; }
+  .fired .what b { font-size: 15px; font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-content: start; }
+  .chip { display: inline-flex; gap: 6px; align-items: baseline; padding: 4px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); color: var(--text); font-size: 13px; }
+  .chip:hover { border-color: var(--accent); text-decoration: none !important; }
+  .chip b { font-weight: 600; }
+  .chip span { font-size: 11.5px; color: var(--muted); }
+  .linkish { background: none; border: 0; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
+  .path-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap: 10px; margin: 12px 0 8px; }
+  .path-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 8px 2px; min-width: 0; }
+  .path-card .t { font-size: 13px; font-weight: 600; }
+  .path-plot { height: 160px; }
+  .legend-line { display: inline-block; width: 18px; border-top: 2px solid; vertical-align: middle; margin: 0 4px 0 12px; }
+  .defs dt { font-weight: 600; margin-top: 12px; font-size: 14px; }
+  .defs dd { margin: 3px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; max-width: 80ch; }
+  .small { font-size: 12.5px; color: var(--muted); line-height: 1.5; max-width: 80ch; }
+  .sortbar { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; }
+  .sortbar .ranges { margin-left: 0; }
+  table.stocks { margin-top: 8px; }
+  .meter { display: inline-block; width: 54px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; vertical-align: middle; margin-right: 4px; }
+  .meter i { display: block; height: 100%; }
+  .meter i.up { background: #58a6ff; }
+  .meter i.down { background: #f778ba; }
+  .leaders { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 12px 28px; }
+  .lh { font-size: 15px; margin: 0 0 6px; }
+  .leader { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; color: var(--text); font-size: 14px; }
+  .leader:hover { border-color: var(--accent); text-decoration: none !important; }
+  .leader .muted { font-size: 12.5px; }
+  @media (max-width: 700px) {
+    .fired { grid-template-columns: 1fr; }
+    .ranges { margin-left: 0; }
+  }
+</style>
+</head>
+<body class="sig-page">
+
+{% set active = 'sectors' %}{% include "_tabs.html" %}
+
+<header>
+  <div>
+    <h1>Sectors</h1>
+    <div class="meta">
+      {% if data.last_bar %}Prices to the {{ data.last_bar }} close. Built <span id="builtAt" data-ts="{{ data.as_of }}"></span>.{% else %}No data yet: the bot fills this in a few minutes after it starts.{% endif %}
+    </div>
+  </div>
+</header>
+
+{% if view %}
+{% set study = data.study %}
+{% set tr = view.trades %}
+
+<section>
+  <div class="picker" role="tablist" aria-label="Sector">
+    <button class="pick" role="tab" data-etf="SPY" title="S&amp;P 500"><b>SPY</b> S&amp;P 500 {{ lights(data.benchmark_regime) }}</button>
+    {% for s in data.sectors %}
+    <button class="pick" role="tab" data-etf="{{ s.etf }}" title="{{ s.name }}"><b>{{ s.etf }}</b> {{ s.name }} {{ lights(s.regime) }}</button>
+    {% endfor %}
+  </div>
+
+  <div class="view-head">
+    <h2 id="vName"></h2>
+    <span class="stat" id="vStat"></span>
+    <span class="ranges" id="ranges">
+      <button type="button" data-n="63">3M</button><button type="button" data-n="126">6M</button><button type="button" data-n="0" class="active">1Y</button>
+    </span>
+  </div>
+  <div id="vChart" class="plot-lg"></div>
+  <p class="small" style="margin:6px 0 0;">Scroll or pinch on the chart to zoom, drag to move. Dots on the buttons: above the 10-month average, above the 200-day average, up over 12 months.</p>
+
+  {% for s in data.sectors %}
+  <div class="sector-stocks" data-etf="{{ s.etf }}" hidden>
+    {% if not s.stocks %}<p class="lede">Holdings unavailable.</p>{% else %}
+    <div class="sortbar"><span class="small" style="margin:0;">Sort by</span>
+      <span class="ranges sorter"><button type="button" data-sort="rank" class="active">Fund weight</button><button type="button" data-sort="up">Rise checks</button><button type="button" data-sort="down">Drop checks</button></span>
+    </div>
+    <table class="stocks">
+      <thead><tr><th class="num" title="Rank by weight in the sector fund">#</th><th>Stock</th><th class="hide-sm">Company</th><th class="num">Last day</th><th class="num hide-sm">12 months</th>
+        <th title="How many of the rise checks are true today (hover a bar to list them)">Rise checks</th><th class="hide-sm" title="How many of the drop checks are true today">Drop checks</th></tr></thead>
+      <tbody>
+      {% for st in s.stocks %}{% set c = st.checks %}
+      <tr class="go" data-href="stock.html?s={{ st.symbol }}" data-rank="{{ st.rank }}" data-up="{{ (c.up / c.n_up) if c else -1 }}" data-down="{{ (c.down / c.n_down) if c else -1 }}">
+        <td class="num muted" title="{{ '%.1f' % (st.weight * 100) if st.weight else '?' }}% of the fund">{{ st.rank }}</td>
+        <td><a class="sym" href="stock.html?s={{ st.symbol }}">{{ st.symbol }}</a></td>
+        <td class="hide-sm muted">{{ st.name }}</td>
+        {% if st.missing %}<td></td><td class="hide-sm"></td><td class="muted">No price data</td><td class="hide-sm"></td>{% else %}
+        <td class="num">{{ pct(st.chg_pct, 2) }}</td>
+        <td class="num hide-sm">{{ pct(st.ret_12m, 0) }}</td>
+        <td>{{ checks_cell(c, 'up') }}</td>
+        <td class="hide-sm">{{ checks_cell(c, 'down') }}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="small" style="margin-top:6px;"># is the stock's rank by weight in the fund (hover for its share).</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+
+{% set combos = view.combos %}
+<section>
+  <h2>Most checks agreeing today</h2>
+  {% if view.leaders.up %}
+  <p class="lede">Each stock is scored on {{ combos.long.checks|length }} rise checks and {{ combos.short.checks|length }} drop checks:
+    trend, momentum, volume, Bollinger Bands, strength, and every signal from the last 5 days. In testing, more checks agreeing
+    did not mean better trades; see <a href="combos.html">Signal combos</a>.</p>
+  <div class="leaders">
+    {% for side, title in [('up', 'Most rise checks'), ('down', 'Most drop checks')] %}
+    <div>
+      <h3 class="lh"><span class="arrow {{ side }}">{{ '&#9650;'|safe if side == 'up' else '&#9660;'|safe }}</span>{{ title }}</h3>
+      {% for st in view.leaders[side] %}
+      <a class="leader" href="stock.html?s={{ st.symbol }}">
+        <span><b>{{ st.symbol }}</b> <span class="muted">{{ st.name }}</span></span>
+        <span>{{ checks_cell(st.checks, side) }}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="lede">Check scores appear after the next data refresh.</p>
+  {% endif %}
+</section>
+
+<section>
+  <details class="fold">
+    <summary><b>What each check and signal means</b></summary>
+    <div class="fold-body defs">
+      {% if combos.long %}
+      <h3 style="font-size:15px; margin:4px 0;">Rise checks</h3>
+      <p class="small">{{ combos.long.checks|map(attribute='label')|join('; ') }}.</p>
+      <h3 style="font-size:15px; margin:10px 0 4px;">Drop checks</h3>
+      <p class="small">{{ combos.short.checks|map(attribute='label')|join('; ') }}.</p>
+      <h3 style="font-size:15px; margin:14px 0 0;">Signals</h3>
+      {% endif %}
+      <dl>
+        {% for m in view.signals %}
+        <dt>{{ sig_name(m) }} <span class="whose">{{ 'research-backed' if m.group == 'research' else 'your signal' }}</span></dt>
+        <dd><span style="color:var(--text);">{{ m.plain }}</span><br>Exact rule: {{ m.definition }}</dd>
+        {% endfor %}
+      </dl>
+      <p class="small">Signals use completed trading days only. Prices are adjusted for splits and dividends. Data: Yahoo Finance.
+        Charts: <a href="https://www.tradingview.com/lightweight-charts/" rel="noopener">TradingView Lightweight Charts</a>.
+        This page describes signals and past results; it is not investment advice.</p>
+    </div>
+  </details>
+</section>
+{% endif %}
+
+<script>
+{% include "_chart_js.html" %}
+const SECTORS = { SPY: { name: 'S&P 500', r: {{ (data.benchmark_regime or {})|tojson }} } };
+{% for s in data.sectors or [] %}SECTORS[{{ s.etf|tojson }}] = { name: {{ s.name|tojson }}, r: {{ s.regime|tojson }} };
+{% endfor %}
+const $ = id => document.getElementById(id);
+
+(function () {
+  const el = $('builtAt');
+  if (el) el.textContent = new Date(Number(el.dataset.ts) * 1000).toLocaleString();
+})();
+
+let current = null, chartApi = null, range = 0;
+function fmtPct(v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v * 100).toFixed(1) + '%'; }
+
+function showSector(etf) {
+  if (!SECTORS[etf]) etf = 'SPY';
+  current = etf;
+  document.querySelectorAll('.pick').forEach(b => { const on = b.dataset.etf === etf; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); });
+  document.querySelectorAll('.sector-stocks').forEach(d => { d.hidden = d.dataset.etf !== etf; });
+  const sec = SECTORS[etf], r = sec.r || {};
+  $('vName').textContent = sec.name + ' (' + etf + ')';
+  $('vStat').innerHTML = r.score === null || r.score === undefined ? 'Not enough history for the trend checks.'
+    : r.score + ' of 3 trend checks on. 12 months: <span class="' + (r.ret_12m >= 0 ? 'rise' : 'drop') + '">' + fmtPct(r.ret_12m) + '</span>';
+  if (location.hash.slice(1) !== etf) history.replaceState(null, '', '#' + etf);
+  loadCharts().then(d => {
+    if (current !== etf) return;
+    if (chartApi) chartApi.remove();
+    const s = d.etfs[etf];
+    if (!s) { $('vChart').innerHTML = '<p class="muted" style="padding:16px;">No chart data for ' + etf + '.</p>'; chartApi = null; return; }
+    chartApi = priceChart($('vChart'), s, d.dates, { m10: true });
+    if (chartApi) chartApi.showRange(range);
+  }).catch(() => { $('vChart').innerHTML = '<p class="muted" style="padding:16px;">Chart data is missing. It is created on the next data refresh.</p>'; });
+}
+
+document.querySelectorAll('.pick').forEach(b => b.addEventListener('click', () => showSector(b.dataset.etf)));
+document.querySelectorAll('#ranges button').forEach(b => b.addEventListener('click', () => {
+  range = Number(b.dataset.n);
+  document.querySelectorAll('#ranges button').forEach(x => x.classList.toggle('active', x === b));
+  if (chartApi) chartApi.showRange(range);
+}));
+document.querySelectorAll('.sorter').forEach(bar => bar.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  const key = b.dataset.sort, tbody = bar.closest('.sector-stocks').querySelector('tbody');
+  bar.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+  [...tbody.rows].sort((a, z) => key === 'rank' ? a.dataset.rank - z.dataset.rank : z.dataset[key] - a.dataset[key])
+    .forEach(r => tbody.appendChild(r));
+})));
+document.querySelectorAll('tr.go').forEach(tr => tr.addEventListener('click', e => { if (!e.target.closest('a')) location.href = tr.dataset.href; }));
+if ($('vChart')) showSector(location.hash.slice(1).toUpperCase() || 'SPY');
+
+</script>
+</body>
+</html>
